@@ -1763,7 +1763,9 @@ function App() {
 
   // Handle redirect result first (comes back after Google sign-in redirect)
   useEffect(() => {
-    auth.getRedirectResult().catch(() => {});
+    auth.getRedirectResult()
+      .then(() => sessionStorage.removeItem('cpw_redirecting'))
+      .catch(() => sessionStorage.removeItem('cpw_redirecting'));
   }, []);
 
   // Listen for auth state changes
@@ -1771,7 +1773,7 @@ function App() {
     return auth.onAuthStateChanged(u => {
       setUser(u);
       setAuthReady(true);
-      if (u) { setSkipAuth(false); LS.set('cpw_skipAuth', false); }
+      if (u) { setSkipAuth(false); LS.set('cpw_skipAuth', false); sessionStorage.removeItem('cpw_redirecting'); }
       if (u && !loadedFromCloud.current) {
         loadedFromCloud.current = true;
         db.collection('users').doc(u.uid).collection('data').doc('main').get().then(doc => {
@@ -1863,7 +1865,7 @@ function App() {
     }, 1500);
   }, [laborRate]);
 
-  const signIn  = () => auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+  const signIn  = () => { sessionStorage.setItem('cpw_redirecting', '1'); auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()); };
   const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
   const handleSkip = () => { setSkipAuth(true); LS.set('cpw_skipAuth', true); };
 
@@ -1921,7 +1923,7 @@ function App() {
 
       <div className="content">
         {/* Sign-in screen — show if auth is ready, no user, and not skipped */}
-        {authReady && !user && !skipAuth ? (
+        {authReady && !user && !skipAuth && !sessionStorage.getItem('cpw_redirecting') ? (
           <div className="signin-screen">
             <svg width="64" height="64" viewBox="0 0 26 26" fill="none">
               <circle cx="13" cy="6" r="2.5" fill="#d4a017"/>
