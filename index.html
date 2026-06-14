@@ -4,6 +4,21 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>Chesapeake Pro Wash — Profitability Tracker</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+  firebase.initializeApp({
+    apiKey: "AIzaSyB6ihNYWNiGEFdSc1amR3lp2sSmPVbvOAU",
+    authDomain: "chesapeake-prowash.firebaseapp.com",
+    projectId: "chesapeake-prowash",
+    storageBucket: "chesapeake-prowash.firebasestorage.app",
+    messagingSenderId: "99330916879",
+    appId: "1:99330916879:web:d7e900943291f11323d97a"
+  });
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
+</script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -24,12 +39,15 @@
     --white:   #ffffff;
     --bg:      #eef1f6;
     --surface: #ffffff;
-    --border:  #dde3ec;
-    --muted:   #6b7a99;
-    --text:    #0c1f3f;
-    --profit:  #1a7a3a;
-    --loss:    #b91c1c;
-    --travel:  #b45309;
+    --border:  #c8d0de;
+    --muted:   #3d4f6e;      /* was #6b7a99 — much darker for readability */
+    --text:    #0a1829;
+    --profit:  #136130;
+    --loss:    #a81515;
+    --travel:  #92400e;
+    /* on-dark text helpers */
+    --on-dark-label: rgba(255,255,255,.82);
+    --on-dark-sub:   rgba(255,255,255,.62);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,7 +84,7 @@
     color: var(--white);
   }
   .header-text h1 span { color: var(--gold2); }
-  .header-text p { font-size: 10px; color: rgba(255,255,255,.55); letter-spacing: .8px; text-transform: uppercase; margin-top: 1px; }
+  .header-text p { font-size: 10px; color: rgba(255,255,255,.78); letter-spacing: .8px; text-transform: uppercase; margin-top: 1px; }
   .header-gold-bar { height: 3px; background: linear-gradient(90deg, var(--gold), var(--gold2), var(--gold)); }
 
   /* ── Nav ── */
@@ -84,7 +102,7 @@
     flex: 0 0 auto; min-width: 64px; padding: 8px 4px 6px;
     background: none; border: none; cursor: pointer;
     font-size: 9px; font-weight: 600; letter-spacing: .2px;
-    color: rgba(255,255,255,.45);
+    color: rgba(255,255,255,.68);
     display: flex; flex-direction: column; align-items: center; gap: 2px;
     transition: color .15s;
     text-transform: uppercase;
@@ -105,12 +123,12 @@
     border-top: 3px solid var(--gold);
   }
   .card-title {
-    font-size: 11px; font-weight: 700;
-    color: var(--navy2);
-    text-transform: uppercase; letter-spacing: .8px;
+    font-size: 13px; font-weight: 700;
+    color: var(--navy);
+    text-transform: uppercase; letter-spacing: .5px;
     margin-bottom: 12px;
     display: flex; justify-content: space-between; align-items: center;
-    font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: .5px;
+    font-family: 'Oswald', sans-serif;
   }
   .card.green-accent { border-top-color: var(--green); }
   .card.gold-accent  { border-top-color: var(--gold); }
@@ -119,7 +137,7 @@
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .form-group { display: flex; flex-direction: column; gap: 4px; }
   .form-group.span2 { grid-column: span 2; }
-  label { font-size: 11px; font-weight: 700; color: var(--navy2); text-transform: uppercase; letter-spacing: .5px; }
+  label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.75); text-transform: uppercase; letter-spacing: .5px; }
   input, select, textarea {
     border: 1.5px solid var(--border);
     border-radius: 9px;
@@ -161,7 +179,7 @@
   .calc-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #dde3ec; }
   .calc-row:last-child { border-bottom: none; }
   .calc-row.total-row { border-top: 2px solid var(--navy); margin-top: 4px; padding-top: 8px; border-bottom: none; }
-  .calc-label { font-size: 13px; color: var(--muted); }
+  .calc-label { font-size: 13px; color: var(--navy2); font-weight: 500; }
   .calc-value { font-size: 14px; font-weight: 700; }
   .calc-value.green  { color: var(--profit); }
   .calc-value.red    { color: var(--loss); }
@@ -182,7 +200,7 @@
   .hours-cell:first-child { background: var(--navy3); }
   .hours-cell-label { font-size: 9px; font-weight: 700; color: var(--gold2); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; font-size: 11px; }
   .hours-cell-value { font-size: 19px; font-weight: 700; color: var(--white); margin-top: 2px; }
-  .hours-cell-sub { font-size: 10px; color: rgba(255,255,255,.5); margin-top: 1px; }
+  .hours-cell-sub { font-size: 10px; color: rgba(255,255,255,.72); margin-top: 1px; }
   .hours-cell.travel { background: #4a2800; }
   .hours-cell.travel .hours-cell-label { color: #fbbf24; }
   .hours-cell.travel .hours-cell-value { color: #fcd34d; }
@@ -226,20 +244,20 @@
     width: 70px; height: 70px; border-radius: 50%;
     background: rgba(255,255,255,.04);
   }
-  .stat-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; font-size: 12px; }
+  .stat-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.82); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; font-size: 12px; }
   .stat-value { font-size: 22px; font-weight: 800; margin-top: 4px; color: white; }
-  .stat-value.green  { color: #4ade80; }
-  .stat-value.red    { color: #f87171; }
+  .stat-value.green  { color: #6ee7a0; }
+  .stat-value.red    { color: #fca5a5; }
   .stat-value.blue   { color: var(--gold2); }
-  .stat-value.orange { color: #fbbf24; }
-  .stat-sub { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .stat-value.orange { color: #fcd34d; }
+  .stat-sub { font-size: 11px; color: rgba(255,255,255,.68); margin-top: 2px; font-weight: 500; }
 
   /* ── List items ── */
   .list-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
   .list-item:last-child { border-bottom: none; }
   .list-item-header { display: flex; justify-content: space-between; align-items: flex-start; }
   .list-item-title { font-size: 14px; font-weight: 700; color: var(--navy); }
-  .list-item-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .list-item-sub { font-size: 12px; color: var(--navy2); margin-top: 2px; font-weight: 500; }
   .list-item-actions { display: flex; gap: 6px; margin-top: 8px; }
 
   /* ── Badges ── */
@@ -254,12 +272,12 @@
 
   /* ── Period tabs ── */
   .period-tabs { display: flex; background: var(--navy); border-radius: 11px; padding: 3px; margin-bottom: 12px; border: 1px solid var(--navy2); }
-  .period-tab { flex: 1; padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border-radius: 9px; cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,.4); transition: all .15s; text-transform: uppercase; letter-spacing: .4px; font-family: 'Oswald', sans-serif; font-size: 14px; }
+  .period-tab { flex: 1; padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border-radius: 9px; cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,.72); transition: all .15s; text-transform: uppercase; letter-spacing: .4px; font-family: 'Oswald', sans-serif; font-size: 14px; }
   .period-tab.active { background: var(--gold); color: var(--navy); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
 
   /* ── Sort header ── */
   .sort-header { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 4px; padding: 6px 0; border-bottom: 2px solid var(--navy); margin-bottom: 4px; }
-  .sort-btn { font-size: 11px; font-weight: 700; color: var(--muted); background: none; border: none; cursor: pointer; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 2px; text-transform: uppercase; letter-spacing: .3px; }
+  .sort-btn { font-size: 11px; font-weight: 700; color: var(--navy2); background: none; border: none; cursor: pointer; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 2px; text-transform: uppercase; letter-spacing: .3px; }
   .sort-btn.active { color: var(--navy); }
   .sort-btn:first-child { text-align: left; justify-content: flex-start; }
 
@@ -267,9 +285,9 @@
   .job-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 4px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .job-row:last-child { border-bottom: none; }
   .job-name { font-size: 13px; font-weight: 700; color: var(--navy); }
-  .job-date { font-size: 11px; color: var(--muted); }
+  .job-date { font-size: 11px; color: var(--navy2); font-weight: 500; }
   .job-num { font-size: 13px; font-weight: 700; text-align: right; }
-  .job-sub { font-size: 11px; color: var(--muted); text-align: right; }
+  .job-sub { font-size: 11px; color: var(--navy2); font-weight: 600; text-align: right; }
 
   /* ── Empty state ── */
   .empty { text-align: center; padding: 36px 16px; color: var(--muted); }
@@ -297,7 +315,7 @@
   }
   .bill-body { flex: 1; min-width: 0; }
   .bill-name { font-size: 14px; font-weight: 700; color: var(--navy); }
-  .bill-vendor { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .bill-vendor { font-size: 12px; color: var(--navy2); margin-top: 1px; font-weight: 500; }
   .bill-amount { font-size: 18px; font-weight: 800; color: var(--loss); flex-shrink: 0; }
 
   .overhead-banner {
@@ -307,10 +325,10 @@
     border: 2px solid var(--gold);
     display: flex; justify-content: space-between; align-items: center;
   }
-  .overhead-banner-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
-  .overhead-banner-value { font-size: 26px; font-weight: 800; color: #f87171; margin-top: 2px; }
+  .overhead-banner-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.82); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
+  .overhead-banner-value { font-size: 26px; font-weight: 800; color: #fca5a5; margin-top: 2px; }
   .overhead-banner-right { text-align: right; }
-  .overhead-banner-net-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
+  .overhead-banner-net-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.82); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
   .overhead-banner-net { font-size: 26px; font-weight: 800; margin-top: 2px; }
 
   /* ── Expense items ── */
@@ -335,7 +353,7 @@
   }
   .exp-body { flex: 1; min-width: 0; }
   .exp-desc { font-size: 14px; font-weight: 700; color: var(--navy); }
-  .exp-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .exp-meta { font-size: 11px; color: var(--navy2); margin-top: 1px; font-weight: 500; }
   .exp-amount { font-size: 16px; font-weight: 800; color: var(--loss); flex-shrink: 0; align-self: center; }
 
   .exp-auto-box {
@@ -369,8 +387,11 @@
     margin-top: 8px; background: #f0f3f9;
     border-radius: 9px; padding: 8px 10px;
   }
-  .detail-grid-item .dg-label { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .detail-grid-item .dg-label { font-size: 9px; font-weight: 700; color: var(--navy2); text-transform: uppercase; letter-spacing: .5px; }
   .detail-grid-item .dg-value { font-size: 13px; font-weight: 700; color: var(--navy); margin-top: 1px; }
+
+  .margin-pct-label { font-size: 11px; color: var(--muted); }
+  .misc-note-text { font-size: 10px; color: var(--muted); display: block; font-weight: 400; }
 
   /* ── Profit note inside a form ── */
   .info-note { font-size: 11px; color: var(--navy3); background: #e8f0fb; border-radius: 7px; padding: 5px 9px; margin: 4px 0 8px; text-align: center; border: 1px solid #c5d4ed; }
@@ -389,9 +410,26 @@
     input:focus, select:focus, textarea:focus { background: #0f1d35; border-color: var(--navy3); }
     input[readonly] { background: #0a1628; color: var(--muted); }
     .calc-box { background: #0a1628; border-color: var(--border); }
+    .calc-label { color: rgba(255,255,255,.85); }
+    .calc-row { border-bottom-color: rgba(255,255,255,.1); }
+    .calc-row.total-row { border-top-color: rgba(255,255,255,.2); }
+    .calc-value.blue { color: #7eb8e0; }
+    .calc-value.gold { color: var(--gold2); }
+    .calc-section-label { color: var(--gold2); }
     .detail-grid { background: #0a1628; }
+    .detail-grid-item .dg-label { color: rgba(255,255,255,.7); }
+    .detail-grid-item .dg-value { color: #e8edf5; }
+    .list-item-sub { color: rgba(255,255,255,.75); }
+    .job-date, .job-sub { color: rgba(255,255,255,.72); }
+    .sort-btn { color: rgba(255,255,255,.65); }
+    .margin-pct-label { color: rgba(255,255,255,.65); }
+    .misc-note-text { color: rgba(255,255,255,.6); }
+    .exp-desc { color: #e8edf5; }
+    .exp-meta { color: rgba(255,255,255,.7); }
+    .bill-name { color: #e8edf5; }
+    .bill-vendor { color: rgba(255,255,255,.7); }
     .job-pill { background: #0a1628; color: #a0b8d8; border-color: var(--navy3); }
-    .info-note { background: #0a1628; color: #7a9fc8; border-color: var(--border); }
+    .info-note { background: rgba(255,255,255,.07); color: rgba(255,255,255,.75); border-color: rgba(255,255,255,.15); }
     .period-tabs { border-color: var(--navy3); }
     .sort-btn.active { color: var(--gold2); }
     .list-item-title, .job-name, .setting-label { color: #e8edf5; }
@@ -400,6 +438,140 @@
     .btn-ghost { color: var(--muted); }
     .btn-ghost:hover { background: #0a1628; }
     .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  }
+
+  /* ── Firebase auth / sync UI ── */
+  .auth-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px 6px;
+    background: var(--navy2);
+    border-bottom: 1px solid rgba(255,255,255,.1);
+    font-family: 'Inter', sans-serif;
+  }
+  .auth-bar-inner { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 480px; margin: 0 auto; }
+  .auth-avatar { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--gold); flex-shrink: 0; }
+  .auth-name { font-size: 12px; color: rgba(255,255,255,.85); font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+  .sync-dot.syncing { background: var(--gold2); animation: pulse 1s infinite; }
+  .sync-label { font-size: 11px; color: rgba(255,255,255,.6); }
+  .btn-signout { font-size: 11px; color: rgba(255,255,255,.55); background: none; border: 1px solid rgba(255,255,255,.2); border-radius: 5px; padding: 2px 8px; cursor: pointer; margin-left: auto; }
+  .btn-signout:hover { color: #fff; border-color: rgba(255,255,255,.5); }
+  .signin-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 20px; padding: 40px 24px; text-align: center; }
+  .signin-screen h2 { font-family: 'Oswald', sans-serif; font-size: 22px; color: var(--navy); }
+  .signin-screen p { font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.5; }
+  .btn-google { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #ddd; border-radius: 10px; padding: 12px 20px; font-size: 15px; font-weight: 600; color: #333; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  .btn-google:hover { box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+  .btn-skip { font-size: 13px; color: var(--muted); background: none; border: none; cursor: pointer; text-decoration: underline; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @media (prefers-color-scheme: dark) {
+    .auth-bar { background: #091526; }
+    .signin-screen h2 { color: #e8edf5; }
+    .btn-google { background: #1a2d4a; border-color: var(--border); color: #e8edf5; }
+  }
+
+  /* ── Desktop layout (≥ 768px) ── */
+  @media (min-width: 768px) {
+    body { overflow: hidden; height: 100vh; }
+
+    /* Sidebar nav */
+    .bottom-nav {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 200px; height: 100vh;
+      max-width: 200px;
+      flex-direction: column; justify-content: flex-start; align-items: stretch;
+      transform: none; left: 0;
+      border-top: none; border-right: 3px solid var(--gold);
+      overflow-y: auto; overflow-x: hidden;
+      padding-top: 12px;
+    }
+    .nav-btn {
+      flex: 0 0 auto; min-width: 0; width: 100%;
+      flex-direction: row; justify-content: flex-start;
+      padding: 13px 20px; gap: 12px;
+      font-size: 12px; letter-spacing: .4px;
+      border-left: 3px solid transparent;
+      border-radius: 0;
+    }
+    .nav-btn.active {
+      border-left-color: var(--gold2);
+      background: rgba(255,255,255,.06);
+    }
+    .nav-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+    /* Sidebar brand logo at top */
+    .bottom-nav::before {
+      content: 'CPW';
+      display: block;
+      font-family: 'Oswald', sans-serif;
+      font-size: 13px; font-weight: 700;
+      color: var(--gold2);
+      letter-spacing: 2px;
+      padding: 0 20px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      margin-bottom: 8px;
+    }
+
+    /* Shift everything right of sidebar */
+    #root {
+      max-width: 100%;
+      margin-left: 200px;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .app-header { position: sticky; top: 0; z-index: 10; }
+    .header-inner { max-width: 100%; padding: 14px 28px; }
+    .header-text h1 { font-size: 22px; }
+    .header-text p { font-size: 11px; }
+    .header-logo-wrap { width: 50px; height: 50px; }
+    .header-logo-wrap svg { width: 32px; height: 32px; }
+
+    .auth-bar { }
+    .auth-bar-inner { max-width: 100%; padding: 0 28px; }
+
+    /* Scrollable content area */
+    .content {
+      padding: 24px 32px;
+      padding-bottom: 32px;
+      overflow-y: auto;
+      height: calc(100vh - 68px); /* subtract header */
+      max-width: 100%;
+    }
+
+    /* Wider inner content container */
+    .content > * { max-width: 900px; }
+
+    /* Stat grid → 4 columns on desktop */
+    .stat-grid { grid-template-columns: repeat(4, 1fr); }
+
+    /* Form grids get more columns */
+    .form-grid { grid-template-columns: repeat(3, 1fr); }
+    .form-grid .span2 { grid-column: span 2; }
+
+    /* Cards more padding */
+    .card { padding: 20px; }
+    .list-item { padding: 16px 20px; }
+
+    /* Hours strip wider */
+    .hours-strip { gap: 12px; }
+    .hours-cell { padding: 12px 16px; }
+
+    /* Sign-in screen centered */
+    .signin-screen { min-height: 60vh; }
+
+    /* Period tabs don't stretch full width */
+    .period-tabs { display: inline-flex; }
+
+    /* Two-column layout for daily entry form + calc side by side */
+    .desktop-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+  }
+
+  @media (min-width: 768px) and (prefers-color-scheme: dark) {
+    .bottom-nav::before { color: var(--gold2); }
   }
 </style>
 </head>
@@ -540,99 +712,103 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
             <button className="btn-ghost btn btn-sm" onClick={closeForm}>Cancel</button>
           </div>
 
-          <div className="form-grid">
-            <div className="form-group span2">
-              <label>Date</label>
-              <input type="date" name="date" value={form.date} onChange={handleChange} />
-            </div>
+          <div className="desktop-split">
+            <div>
+              <div className="form-grid">
+                <div className="form-group span2">
+                  <label>Date</label>
+                  <input type="date" name="date" value={form.date} onChange={handleChange} />
+                </div>
 
-            {/* Job revenue read-only pull-in */}
-            <div className="form-group span2">
-              <label>Job Revenue <span className="auto-badge">AUTO</span></label>
-              <div className="input-prefix">
-                <span>$</span>
-                <input type="text" readOnly value={liveCalc.jobRevenue.toFixed(2)}
-                  style={{ fontStyle: liveCalc.jobRevenue === 0 ? 'italic' : 'normal' }} />
+                {/* Job revenue read-only pull-in */}
+                <div className="form-group span2">
+                  <label>Job Revenue <span className="auto-badge">AUTO</span></label>
+                  <div className="input-prefix">
+                    <span>$</span>
+                    <input type="text" readOnly value={liveCalc.jobRevenue.toFixed(2)}
+                      style={{ fontStyle: liveCalc.jobRevenue === 0 ? 'italic' : 'normal' }} />
+                  </div>
+                  {jobsOnFormDate.length > 0
+                    ? <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
+                        {jobsOnFormDate.length} job{jobsOnFormDate.length > 1 ? 's' : ''} on this date: {jobsOnFormDate.map(j => j.client).join(', ')}
+                      </span>
+                    : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No jobs logged for this date</span>
+                  }
+                </div>
+
+                <MoneyInput label="Additional Revenue" hint="(optional)" name="additionalRevenue" value={form.additionalRevenue} onChange={handleChange} />
+                <div className="form-group">
+                  <label>Total Hours Worked</label>
+                  <input type="number" inputMode="decimal" name="manHours" value={form.manHours}
+                    onChange={handleChange} placeholder="0.0" step="0.25" min="0" />
+                  {liveCalc.jobHours > 0 && (
+                    <span style={{ fontSize: 11, color: '#a0aec0', marginTop: 2 }}>
+                      Job hrs: {fmtHrs(liveCalc.jobHours)} · Travel = {fmtHrs(liveCalc.travelHours)}
+                    </span>
+                  )}
+                </div>
+
+                <MoneyInput label="Gas / Fuel"  name="gas"       value={form.gas}       onChange={handleChange} />
+                <MoneyInput label="Materials"   name="materials" value={form.materials} onChange={handleChange} />
+                <div className="form-group span2">
+                  <label>Misc Expenses</label>
+                  <div className="input-prefix">
+                    <span>$</span>
+                    <input type="number" inputMode="decimal" name="misc" value={form.misc} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+                  </div>
+                </div>
+                <div className="form-group span2">
+                  <label>Misc Note (optional)</label>
+                  <textarea name="miscNote" value={form.miscNote} onChange={handleChange} placeholder="e.g. equipment rental..." rows={2} />
+                </div>
               </div>
-              {jobsOnFormDate.length > 0
-                ? <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
-                    {jobsOnFormDate.length} job{jobsOnFormDate.length > 1 ? 's' : ''} on this date: {jobsOnFormDate.map(j => j.client).join(', ')}
-                  </span>
-                : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No jobs logged for this date</span>
-              }
-            </div>
 
-            <MoneyInput label="Additional Revenue" hint="(optional)" name="additionalRevenue" value={form.additionalRevenue} onChange={handleChange} />
-            <div className="form-group">
-              <label>Total Hours Worked</label>
-              <input type="number" inputMode="decimal" name="manHours" value={form.manHours}
-                onChange={handleChange} placeholder="0.0" step="0.25" min="0" />
-              {liveCalc.jobHours > 0 && (
-                <span style={{ fontSize: 11, color: '#a0aec0', marginTop: 2 }}>
-                  Job hrs: {fmtHrs(liveCalc.jobHours)} · Travel = {fmtHrs(liveCalc.travelHours)}
-                </span>
+              {/* Hours breakdown strip */}
+              {(liveCalc.totalHours > 0 || liveCalc.jobHours > 0) && (
+                <div className="hours-strip" style={{ marginTop: 12 }}>
+                  <div className="hours-cell">
+                    <div className="hours-cell-label">Job Hrs</div>
+                    <div className="hours-cell-value">{fmtHrs(liveCalc.jobHours)}</div>
+                    <div className="hours-cell-sub">billable</div>
+                  </div>
+                  <div className="hours-cell travel">
+                    <div className="hours-cell-label">Travel Hrs</div>
+                    <div className="hours-cell-value">{fmtHrs(liveCalc.travelHours)}</div>
+                    <div className="hours-cell-sub">drive time</div>
+                  </div>
+                  <div className="hours-cell">
+                    <div className="hours-cell-label">Total Hrs</div>
+                    <div className="hours-cell-value">{fmtHrs(liveCalc.totalHours)}</div>
+                    <div className="hours-cell-sub">all in</div>
+                  </div>
+                </div>
               )}
+
+              <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={handleSubmit}>{editId ? 'Save Changes' : 'Save Entry'}</button>
             </div>
 
-            <MoneyInput label="Gas / Fuel"  name="gas"       value={form.gas}       onChange={handleChange} />
-            <MoneyInput label="Materials"   name="materials" value={form.materials} onChange={handleChange} />
-            <div className="form-group span2">
-              <label>Misc Expenses</label>
-              <div className="input-prefix">
-                <span>$</span>
-                <input type="number" inputMode="decimal" name="misc" value={form.misc} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+            <div className="calc-box" style={{ margin: 0 }}>
+              <div className="calc-section-label">Revenue</div>
+              <div className="calc-row"><span className="calc-label">Job Revenue (auto)</span><span className="calc-value blue">{fmt$(liveCalc.jobRevenue)}</span></div>
+              <div className="calc-row"><span className="calc-label">Additional Revenue</span><span className="calc-value blue">{fmt$(liveCalc.additionalRevenue)}</span></div>
+              <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Revenue</span><span className="calc-value blue">{fmt$(liveCalc.totalRevenue)}</span></div>
+
+              <div className="calc-section-label" style={{ marginTop: 10 }}>Expenses</div>
+              <div className="calc-row"><span className="calc-label">Labor ({fmtHrs(liveCalc.totalHours)} × ${laborRate})</span><span className="calc-value red">{fmt$(liveCalc.labor)}</span></div>
+              <div className="calc-row"><span className="calc-label">Gas / Fuel</span><span className="calc-value red">{fmt$(liveCalc.gas)}</span></div>
+              <div className="calc-row"><span className="calc-label">Materials</span><span className="calc-value red">{fmt$(liveCalc.materials)}</span></div>
+              <div className="calc-row"><span className="calc-label">Misc</span><span className="calc-value red">{fmt$(liveCalc.misc)}</span></div>
+              <div className="calc-row">
+                <span className="calc-label">Expense Log <span className="auto-badge">AUTO</span></span>
+                <span className="calc-value red">{fmt$(liveCalc.expenseLogTotal)}{liveCalc.dayExpItems.length > 0 ? <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 4 }}>({liveCalc.dayExpItems.length} items)</span> : null}</span>
               </div>
-            </div>
-            <div className="form-group span2">
-              <label>Misc Note (optional)</label>
-              <textarea name="miscNote" value={form.miscNote} onChange={handleChange} placeholder="e.g. equipment rental..." rows={2} />
+              <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Expenses</span><span className="calc-value red">{fmt$(liveCalc.totalExp)}</span></div>
+
+              <div className="calc-section-label" style={{ marginTop: 10 }}>Bottom Line</div>
+              <div className="calc-row"><span className="calc-label">Net Profit</span><span className={`calc-value ${liveCalc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(liveCalc.profit)}</span></div>
+              <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${liveCalc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(liveCalc.margin)}</span></div>
             </div>
           </div>
-
-          {/* Hours breakdown strip */}
-          {(liveCalc.totalHours > 0 || liveCalc.jobHours > 0) && (
-            <div className="hours-strip">
-              <div className="hours-cell">
-                <div className="hours-cell-label">Job Hrs</div>
-                <div className="hours-cell-value">{fmtHrs(liveCalc.jobHours)}</div>
-                <div className="hours-cell-sub">billable</div>
-              </div>
-              <div className="hours-cell travel">
-                <div className="hours-cell-label">Travel Hrs</div>
-                <div className="hours-cell-value">{fmtHrs(liveCalc.travelHours)}</div>
-                <div className="hours-cell-sub">drive time</div>
-              </div>
-              <div className="hours-cell">
-                <div className="hours-cell-label">Total Hrs</div>
-                <div className="hours-cell-value">{fmtHrs(liveCalc.totalHours)}</div>
-                <div className="hours-cell-sub">all in</div>
-              </div>
-            </div>
-          )}
-
-          <div className="calc-box">
-            <div className="calc-section-label">Revenue</div>
-            <div className="calc-row"><span className="calc-label">Job Revenue (auto)</span><span className="calc-value blue">{fmt$(liveCalc.jobRevenue)}</span></div>
-            <div className="calc-row"><span className="calc-label">Additional Revenue</span><span className="calc-value blue">{fmt$(liveCalc.additionalRevenue)}</span></div>
-            <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Revenue</span><span className="calc-value blue">{fmt$(liveCalc.totalRevenue)}</span></div>
-
-            <div className="calc-section-label" style={{ marginTop: 10 }}>Expenses</div>
-            <div className="calc-row"><span className="calc-label">Labor ({fmtHrs(liveCalc.totalHours)} × ${laborRate})</span><span className="calc-value red">{fmt$(liveCalc.labor)}</span></div>
-            <div className="calc-row"><span className="calc-label">Gas / Fuel</span><span className="calc-value red">{fmt$(liveCalc.gas)}</span></div>
-            <div className="calc-row"><span className="calc-label">Materials</span><span className="calc-value red">{fmt$(liveCalc.materials)}</span></div>
-            <div className="calc-row"><span className="calc-label">Misc</span><span className="calc-value red">{fmt$(liveCalc.misc)}</span></div>
-            <div className="calc-row">
-              <span className="calc-label">Expense Log <span className="auto-badge">AUTO</span></span>
-              <span className="calc-value red">{fmt$(liveCalc.expenseLogTotal)}{liveCalc.dayExpItems.length > 0 ? <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 4 }}>({liveCalc.dayExpItems.length} items)</span> : null}</span>
-            </div>
-            <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Expenses</span><span className="calc-value red">{fmt$(liveCalc.totalExp)}</span></div>
-
-            <div className="calc-section-label" style={{ marginTop: 10 }}>Bottom Line</div>
-            <div className="calc-row"><span className="calc-label">Net Profit</span><span className={`calc-value ${liveCalc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(liveCalc.profit)}</span></div>
-            <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${liveCalc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(liveCalc.margin)}</span></div>
-          </div>
-
-          <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Save Entry'}</button>
         </div>
       )}
 
@@ -652,7 +828,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className={`calc-value ${c.profit >= 0 ? 'green' : 'red'}`} style={{ fontSize: 17 }}>{fmt$(c.profit)}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtPct(c.margin)} margin</div>
+                <div className="margin-pct-label">{fmtPct(c.margin)} margin</div>
               </div>
             </div>
 
@@ -678,7 +854,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
             <div className="detail-grid">
               <div className="detail-grid-item"><div className="dg-label">Labor</div><div className="dg-value">{fmt$(c.labor)}</div></div>
               <div className="detail-grid-item"><div className="dg-label">Gas+Mat</div><div className="dg-value">{fmt$(c.gas + c.materials)}</div></div>
-              <div className="detail-grid-item"><div className="dg-label">Misc</div><div className="dg-value">{fmt$(c.misc)}{entry.miscNote ? <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', fontWeight: 400 }}>{entry.miscNote}</span> : null}</div></div>
+              <div className="detail-grid-item"><div className="dg-label">Misc</div><div className="dg-value">{fmt$(c.misc)}{entry.miscNote ? <span className="misc-note-text">{entry.miscNote}</span> : null}</div></div>
             </div>
 
             {/* Expense log items auto-pulled for this date */}
@@ -1035,14 +1211,14 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
           {/* Two-number banner: overhead vs net after bills */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: '3px solid #f87171' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Fixed Overhead</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#f87171', marginTop: 4 }}>{fmt$(totalBills)}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{bills.length} bill{bills.length !== 1 ? 's' : ''} / mo</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.88)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Fixed Overhead</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#fca5a5', marginTop: 4 }}>{fmt$(totalBills)}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.72)', marginTop: 2, fontWeight: 500 }}>{bills.length} bill{bills.length !== 1 ? 's' : ''} / mo</div>
             </div>
             <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: `3px solid ${monthNetAfterBills >= 0 ? '#4ade80' : '#f87171'}` }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Net After Bills</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: monthNetAfterBills >= 0 ? '#4ade80' : '#f87171', marginTop: 4 }}>{fmt$(monthNetAfterBills)}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>job profit − bills</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.88)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Net After Bills</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: monthNetAfterBills >= 0 ? '#6ee7a0' : '#fca5a5', marginTop: 4 }}>{fmt$(monthNetAfterBills)}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.72)', marginTop: 2, fontWeight: 500 }}>job profit − bills</div>
             </div>
           </div>
 
@@ -1140,7 +1316,7 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems }) {
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, user, signIn, signOut, skipAuth, setSkipAuth }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
 
@@ -1195,6 +1371,31 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems }) {
 
   return (
     <div>
+      <div className="card">
+        <div className="card-title">Google Sync</div>
+        {user ? (
+          <div className="setting-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              {user.photoURL && <img src={user.photoURL} style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid var(--gold)' }} />}
+              <div>
+                <div className="setting-label">{user.displayName}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{user.email}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>✅ Syncing across all your devices</div>
+            <button className="btn btn-edit btn" style={{ width: '100%' }} onClick={signOut}>Sign Out</button>
+          </div>
+        ) : (
+          <div className="setting-row">
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>Sign in with Google to sync your data between your phone and computer automatically.</div>
+            <button className="btn-google" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }} onClick={() => { setSkipAuth(false); LS.set('cpw_skipAuth', false); signIn(); }}>
+              <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Sign in with Google
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="card">
         <div className="card-title">Labor Rate</div>
         <div className="setting-row">
@@ -1346,7 +1547,7 @@ function BillsTab({ bills, setBills }) {
           {/* Monthly total banner */}
           <div style={{ background: 'var(--navy)', borderRadius: 14, padding: '14px 16px', marginBottom: 12, border: '2px solid var(--gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.6px', fontFamily: 'Oswald, sans-serif' }}>Monthly Overhead</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.85)', textTransform: 'uppercase', letterSpacing: '.6px', fontFamily: 'Oswald, sans-serif' }}>Monthly Overhead</div>
               <div style={{ fontSize: 28, fontWeight: 800, color: '#f87171', marginTop: 2 }}>{fmt$(totalMonthly)}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -1552,11 +1753,114 @@ function App() {
   const [bills, setBills]           = useState(() => LS.get('cpw_bills', []));
   const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
 
-  useEffect(() => { LS.set('cpw_entries',  entries);      }, [entries]);
-  useEffect(() => { LS.set('cpw_jobs',     jobs);         }, [jobs]);
-  useEffect(() => { LS.set('cpw_expenses', expenseItems); }, [expenseItems]);
-  useEffect(() => { LS.set('cpw_bills',    bills);        }, [bills]);
-  useEffect(() => { LS.set('cpw_laborRate', laborRate);   }, [laborRate]);
+  // Firebase auth + sync state
+  const [user, setUser]         = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [syncing, setSyncing]   = useState(false);
+  const [skipAuth, setSkipAuth] = useState(() => LS.get('cpw_skipAuth', false));
+  const syncTimer               = useRef(null);
+  const loadedFromCloud         = useRef(false);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    return auth.onAuthStateChanged(u => {
+      setUser(u);
+      setAuthReady(true);
+      if (u && !loadedFromCloud.current) {
+        loadedFromCloud.current = true;
+        db.collection('users').doc(u.uid).collection('data').doc('main').get().then(doc => {
+          if (doc.exists) {
+            const d = doc.data();
+            if (d.entries)               setEntries(d.entries);
+            if (d.jobs)                  setJobs(d.jobs);
+            if (d.expenses)              setExpenseItems(d.expenses);
+            if (d.bills)                 setBills(d.bills);
+            if (d.laborRate !== undefined) setLaborRate(d.laborRate);
+          } else {
+            // First sign-in — upload whatever is in localStorage
+            const local = {
+              entries: LS.get('cpw_entries', []),
+              jobs:    LS.get('cpw_jobs', []),
+              expenses: LS.get('cpw_expenses', []),
+              bills:   LS.get('cpw_bills', []),
+              laborRate: LS.get('cpw_laborRate', 30),
+            };
+            db.collection('users').doc(u.uid).collection('data').doc('main').set(local);
+          }
+        });
+      }
+    });
+  }, []);
+
+  // Debounced Firestore sync whenever data changes
+  useEffect(() => {
+    LS.set('cpw_entries', entries);
+    if (!user) return;
+    clearTimeout(syncTimer.current);
+    setSyncing(true);
+    syncTimer.current = setTimeout(() => {
+      db.collection('users').doc(user.uid).collection('data').doc('main')
+        .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
+  }, [entries]);
+
+  useEffect(() => {
+    LS.set('cpw_jobs', jobs);
+    if (!user) return;
+    clearTimeout(syncTimer.current);
+    setSyncing(true);
+    syncTimer.current = setTimeout(() => {
+      db.collection('users').doc(user.uid).collection('data').doc('main')
+        .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
+  }, [jobs]);
+
+  useEffect(() => {
+    LS.set('cpw_expenses', expenseItems);
+    if (!user) return;
+    clearTimeout(syncTimer.current);
+    setSyncing(true);
+    syncTimer.current = setTimeout(() => {
+      db.collection('users').doc(user.uid).collection('data').doc('main')
+        .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
+  }, [expenseItems]);
+
+  useEffect(() => {
+    LS.set('cpw_bills', bills);
+    if (!user) return;
+    clearTimeout(syncTimer.current);
+    setSyncing(true);
+    syncTimer.current = setTimeout(() => {
+      db.collection('users').doc(user.uid).collection('data').doc('main')
+        .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
+  }, [bills]);
+
+  useEffect(() => {
+    LS.set('cpw_laborRate', laborRate);
+    if (!user) return;
+    clearTimeout(syncTimer.current);
+    setSyncing(true);
+    syncTimer.current = setTimeout(() => {
+      db.collection('users').doc(user.uid).collection('data').doc('main')
+        .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
+  }, [laborRate]);
+
+  const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
+  const handleSkip = () => { setSkipAuth(true); LS.set('cpw_skipAuth', true); };
 
   const tabs = [
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
@@ -1596,13 +1900,55 @@ function App() {
         </div>
         <div className="header-gold-bar" />
       </div>
+
+      {/* Auth bar — shows when signed in */}
+      {user && (
+        <div className="auth-bar">
+          <div className="auth-bar-inner">
+            {user.photoURL && <img className="auth-avatar" src={user.photoURL} alt="" />}
+            <span className="auth-name">{user.displayName || user.email}</span>
+            <div className="sync-dot" style={{ background: syncing ? 'var(--gold2)' : '#4ade80' }} title={syncing ? 'Saving…' : 'Synced'} />
+            <span className="sync-label">{syncing ? 'Saving…' : 'Synced'}</span>
+            <button className="btn-signout" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+      )}
+
       <div className="content">
-        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
-        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} />}
-        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
-        {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
-        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} />}
+        {/* Sign-in screen — show if auth is ready, no user, and not skipped */}
+        {authReady && !user && !skipAuth ? (
+          <div className="signin-screen">
+            <svg width="64" height="64" viewBox="0 0 26 26" fill="none">
+              <circle cx="13" cy="6" r="2.5" fill="#d4a017"/>
+              <polygon points="13,3 14.2,5.5 13,5 11.8,5.5" fill="#d4a017"/>
+              <polygon points="13,9 14.2,6.5 13,7 11.8,6.5" fill="#d4a017"/>
+              <polygon points="10,6 12.5,4.8 12,6 12.5,7.2" fill="#d4a017"/>
+              <polygon points="16,6 13.5,4.8 14,6 13.5,7.2" fill="#d4a017"/>
+              <rect x="4" y="14" width="9" height="3.5" rx="1" fill="#0c1f3f"/>
+              <polygon points="4,14 4,20 6,20 6,17.5" fill="#0c1f3f"/>
+              <rect x="12.5" y="15" width="4" height="1.5" rx=".75" fill="#0c1f3f"/>
+              <path d="M16.5 14.5 Q19 12 21 10.5" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M16.5 15.5 Q20 14.5 22.5 13" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M16.5 16.5 Q19.5 17 21.5 17.5" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <h2>Welcome to CPW Tracker</h2>
+            <p>Sign in with Google to sync your data across your phone and computer.</p>
+            <button className="btn-google" onClick={signIn}>
+              <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Sign in with Google
+            </button>
+            <button className="btn-skip" onClick={handleSkip}>Use without signing in</button>
+          </div>
+        ) : (
+          <>
+            {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
+            {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} />}
+            {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
+            {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
+            {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
+            {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} user={user} signIn={signIn} signOut={signOut} skipAuth={skipAuth} setSkipAuth={setSkipAuth} />}
+          </>
+        )}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
