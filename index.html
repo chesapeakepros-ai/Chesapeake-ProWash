@@ -1747,7 +1747,7 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const syncTimer                 = useRef(null);
-  const receivingFromCloud        = useRef(false);
+  const cloudWriteTime            = useRef(0);
   const snapshotUnsub             = useRef(null);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
@@ -1757,15 +1757,14 @@ function App() {
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
     snapshotUnsub.current = userDoc(uid).onSnapshot(doc => {
       if (doc.exists) {
-        receivingFromCloud.current = true;
+        // Record when we last received from cloud; block saves for 3s after
+        cloudWriteTime.current = Date.now();
         const d = doc.data();
         if (d.entries)                setEntries(d.entries);
         if (d.jobs)                   setJobs(d.jobs);
         if (d.expenses)               setExpenseItems(d.expenses);
         if (d.bills)                  setBills(d.bills);
         if (d.laborRate !== undefined) setLaborRate(d.laborRate);
-        // Allow save effects to run again after React re-renders
-        setTimeout(() => { receivingFromCloud.current = false; }, 200);
       } else {
         // First time — seed from localStorage
         userDoc(uid).set({
@@ -1793,7 +1792,7 @@ function App() {
   }, []);
 
   const saveToCloud = (uid, data) => {
-    if (receivingFromCloud.current) return;
+    if (Date.now() - cloudWriteTime.current < 3000) return;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
