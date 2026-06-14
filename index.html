@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Chesapeake Pro Wash — Profitability Tracker</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ── Brand tokens ── */
+  :root {
+    --navy:    #0c1f3f;
+    --navy2:   #152d57;
+    --navy3:   #1e3d6e;
+    --gold:    #d4a017;
+    --gold2:   #f0bc2a;
+    --green:   #1a5c2a;
+    --green2:  #22753a;
+    --water:   #5ba8c9;
+    --white:   #ffffff;
+    --bg:      #eef1f6;
+    --surface: #ffffff;
+    --border:  #dde3ec;
+    --muted:   #6b7a99;
+    --text:    #0c1f3f;
+    --profit:  #1a7a3a;
+    --loss:    #b91c1c;
+    --travel:  #b45309;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  #root { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  .app-header {
+    background: var(--navy);
+    color: var(--white);
+    padding: 0;
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 3px solid var(--gold);
+    box-shadow: 0 2px 12px rgba(0,0,0,.35);
+  }
+  .header-inner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 16px 10px;
+  }
+  .header-logo-wrap {
+    width: 42px; height: 42px; flex-shrink: 0;
+    background: var(--navy2);
+    border: 2px solid var(--gold);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .header-logo-wrap svg { width: 26px; height: 26px; }
+  .header-text h1 {
+    font-family: 'Oswald', sans-serif;
+    font-size: 18px; font-weight: 700;
+    letter-spacing: .5px;
+    line-height: 1.1;
+    color: var(--white);
+  }
+  .header-text h1 span { color: var(--gold2); }
+  .header-text p { font-size: 10px; color: rgba(255,255,255,.55); letter-spacing: .8px; text-transform: uppercase; margin-top: 1px; }
+  .header-gold-bar { height: 3px; background: linear-gradient(90deg, var(--gold), var(--gold2), var(--gold)); }
+
+  /* ── Nav ── */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    background: var(--navy);
+    border-top: 2px solid var(--gold);
+    display: flex; overflow-x: auto; z-index: 10;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.3);
+    scrollbar-width: none;
+  }
+  .bottom-nav::-webkit-scrollbar { display: none; }
+  .nav-btn {
+    flex: 0 0 auto; min-width: 64px; padding: 8px 4px 6px;
+    background: none; border: none; cursor: pointer;
+    font-size: 9px; font-weight: 600; letter-spacing: .2px;
+    color: rgba(255,255,255,.45);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    transition: color .15s;
+    text-transform: uppercase;
+  }
+  .nav-btn.active { color: var(--gold2); }
+  .nav-btn svg { width: 19px; height: 19px; }
+
+  /* ── Content ── */
+  .content { flex: 1; padding: 12px; overflow-y: auto; padding-bottom: 80px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(12,31,63,.08), 0 0 0 1px rgba(12,31,63,.05);
+    border-top: 3px solid var(--gold);
+  }
+  .card-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--navy2);
+    text-transform: uppercase; letter-spacing: .8px;
+    margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: .5px;
+  }
+  .card.green-accent { border-top-color: var(--green); }
+  .card.gold-accent  { border-top-color: var(--gold); }
+
+  /* ── Forms ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group.span2 { grid-column: span 2; }
+  label { font-size: 11px; font-weight: 700; color: var(--navy2); text-transform: uppercase; letter-spacing: .5px; }
+  input, select, textarea {
+    border: 1.5px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 11px;
+    font-size: 15px; font-family: inherit;
+    width: 100%; background: #f5f7fb;
+    transition: border-color .15s, box-shadow .15s;
+    -webkit-appearance: none; color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--navy3);
+    box-shadow: 0 0 0 3px rgba(12,31,63,.1);
+    background: white;
+  }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  textarea { resize: vertical; min-height: 60px; font-size: 14px; }
+  .input-prefix { position: relative; }
+  .input-prefix span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; pointer-events: none; }
+  .input-prefix input { padding-left: 22px; }
+  input[readonly] { background: #eef1f6; color: var(--muted); border-color: var(--border); }
+
+  /* ── Calc box ── */
+  .calc-box {
+    background: #f0f3f9;
+    border-radius: 11px;
+    padding: 11px 13px;
+    margin: 12px 0 8px;
+    border: 1px solid #dde3ec;
+  }
+  .calc-section-label {
+    font-size: 10px; font-weight: 700;
+    color: var(--navy3); text-transform: uppercase; letter-spacing: .7px;
+    margin: 10px 0 4px; font-family: 'Oswald', sans-serif; font-size: 12px;
+  }
+  .calc-section-label:first-child { margin-top: 0; }
+  .calc-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #dde3ec; }
+  .calc-row:last-child { border-bottom: none; }
+  .calc-row.total-row { border-top: 2px solid var(--navy); margin-top: 4px; padding-top: 8px; border-bottom: none; }
+  .calc-label { font-size: 13px; color: var(--muted); }
+  .calc-value { font-size: 14px; font-weight: 700; }
+  .calc-value.green  { color: var(--profit); }
+  .calc-value.red    { color: var(--loss); }
+  .calc-value.blue   { color: var(--navy2); }
+  .calc-value.gold   { color: #a37800; }
+  .calc-value.orange { color: var(--travel); }
+  .calc-value.gray   { color: var(--muted); }
+
+  /* ── Hours strip ── */
+  .hours-strip {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 1px;
+    background: var(--navy);
+    border-radius: 11px; overflow: hidden;
+    margin: 10px 0;
+    border: 2px solid var(--navy);
+  }
+  .hours-cell { text-align: center; padding: 10px 6px; background: var(--navy2); }
+  .hours-cell:first-child { background: var(--navy3); }
+  .hours-cell-label { font-size: 9px; font-weight: 700; color: var(--gold2); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; font-size: 11px; }
+  .hours-cell-value { font-size: 19px; font-weight: 700; color: var(--white); margin-top: 2px; }
+  .hours-cell-sub { font-size: 10px; color: rgba(255,255,255,.5); margin-top: 1px; }
+  .hours-cell.travel { background: #4a2800; }
+  .hours-cell.travel .hours-cell-label { color: #fbbf24; }
+  .hours-cell.travel .hours-cell-value { color: #fcd34d; }
+
+  /* ── Auto badge ── */
+  .auto-badge {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: var(--gold2); color: var(--navy);
+    border-radius: 20px; font-size: 9px; font-weight: 700;
+    padding: 2px 7px; margin-left: 6px; letter-spacing: .4px;
+    text-transform: uppercase;
+  }
+
+  /* ── Buttons ── */
+  .btn { border: none; border-radius: 10px; padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .1s; letter-spacing: .2px; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--navy2), var(--navy));
+    color: white; width: 100%; margin-top: 4px;
+    border-bottom: 3px solid var(--gold);
+    font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: .5px;
+  }
+  .btn-primary:hover { opacity: .92; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 7px; }
+  .btn-ghost { background: transparent; color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; font-weight: 500; }
+  .btn-ghost:hover { background: #eef1f6; }
+  .btn-danger { background: #fee2e2; color: #b91c1c; }
+  .btn-edit { background: #eef1f8; color: var(--navy2); border: 1px solid #c5cfe0; }
+
+  /* ── Stat cards ── */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat-card {
+    background: var(--navy);
+    border-radius: 14px; padding: 14px;
+    box-shadow: 0 2px 8px rgba(12,31,63,.2);
+    border-bottom: 3px solid var(--gold);
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute; top: -20px; right: -20px;
+    width: 70px; height: 70px; border-radius: 50%;
+    background: rgba(255,255,255,.04);
+  }
+  .stat-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; font-size: 12px; }
+  .stat-value { font-size: 22px; font-weight: 800; margin-top: 4px; color: white; }
+  .stat-value.green  { color: #4ade80; }
+  .stat-value.red    { color: #f87171; }
+  .stat-value.blue   { color: var(--gold2); }
+  .stat-value.orange { color: #fbbf24; }
+  .stat-sub { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
+
+  /* ── List items ── */
+  .list-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .list-item:last-child { border-bottom: none; }
+  .list-item-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .list-item-title { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .list-item-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .list-item-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+  /* ── Badges ── */
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: .2px; }
+  .badge-green  { background: #dcfce7; color: #15803d; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+  .badge-yellow { background: #fef9c3; color: #a16207; }
+  .badge-orange { background: #ffedd5; color: #c2410c; }
+
+  /* ── Charts ── */
+  .chart-wrap { position: relative; height: 200px; margin-top: 8px; }
+
+  /* ── Period tabs ── */
+  .period-tabs { display: flex; background: var(--navy); border-radius: 11px; padding: 3px; margin-bottom: 12px; border: 1px solid var(--navy2); }
+  .period-tab { flex: 1; padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border-radius: 9px; cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,.4); transition: all .15s; text-transform: uppercase; letter-spacing: .4px; font-family: 'Oswald', sans-serif; font-size: 14px; }
+  .period-tab.active { background: var(--gold); color: var(--navy); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+
+  /* ── Sort header ── */
+  .sort-header { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 4px; padding: 6px 0; border-bottom: 2px solid var(--navy); margin-bottom: 4px; }
+  .sort-btn { font-size: 11px; font-weight: 700; color: var(--muted); background: none; border: none; cursor: pointer; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 2px; text-transform: uppercase; letter-spacing: .3px; }
+  .sort-btn.active { color: var(--navy); }
+  .sort-btn:first-child { text-align: left; justify-content: flex-start; }
+
+  /* ── Job rows ── */
+  .job-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 4px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .job-row:last-child { border-bottom: none; }
+  .job-name { font-size: 13px; font-weight: 700; color: var(--navy); }
+  .job-date { font-size: 11px; color: var(--muted); }
+  .job-num { font-size: 13px; font-weight: 700; text-align: right; }
+  .job-sub { font-size: 11px; color: var(--muted); text-align: right; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 36px 16px; color: var(--muted); }
+  .empty-icon { font-size: 44px; margin-bottom: 10px; }
+  .empty p { font-size: 14px; line-height: 1.5; }
+
+  /* ── Settings ── */
+  .setting-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 14px; font-weight: 600; margin-bottom: 6px; color: var(--navy); }
+
+  .divider { height: 1px; background: var(--border); margin: 6px 0; }
+
+  /* ── Bills ── */
+  .bill-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .bill-row:last-child { border-bottom: none; }
+  .bill-icon-wrap {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    background: var(--navy); border: 2px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px;
+  }
+  .bill-body { flex: 1; min-width: 0; }
+  .bill-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .bill-vendor { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .bill-amount { font-size: 18px; font-weight: 800; color: var(--loss); flex-shrink: 0; }
+
+  .overhead-banner {
+    background: var(--navy);
+    border-radius: 14px; padding: 16px;
+    margin-bottom: 12px;
+    border: 2px solid var(--gold);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .overhead-banner-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
+  .overhead-banner-value { font-size: 26px; font-weight: 800; color: #f87171; margin-top: 2px; }
+  .overhead-banner-right { text-align: right; }
+  .overhead-banner-net-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .6px; font-family: 'Oswald', sans-serif; }
+  .overhead-banner-net { font-size: 26px; font-weight: 800; margin-top: 2px; }
+
+  /* ── Expense items ── */
+  .exp-cat-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  }
+  .exp-cat-gas       { background: #fef3c7; color: #92400e; }
+  .exp-cat-materials { background: #d1fae5; color: #065f46; }
+  .exp-cat-equipment { background: #dbeafe; color: #1e40af; }
+  .exp-cat-misc      { background: #f3e8ff; color: #6b21a8; }
+
+  .exp-list-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 11px 0; border-bottom: 1px solid var(--border);
+  }
+  .exp-list-item:last-child { border-bottom: none; }
+  .exp-icon-wrap {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; background: #f0f3f9;
+  }
+  .exp-body { flex: 1; min-width: 0; }
+  .exp-desc { font-size: 14px; font-weight: 700; color: var(--navy); }
+  .exp-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .exp-amount { font-size: 16px; font-weight: 800; color: var(--loss); flex-shrink: 0; align-self: center; }
+
+  .exp-auto-box {
+    background: #fff8e6; border: 1px solid #f0d080; border-radius: 10px;
+    padding: 10px 12px; margin-top: 8px;
+  }
+  .exp-auto-box-title { font-size: 10px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; font-family: 'Oswald', sans-serif; font-size: 12px; }
+  .exp-auto-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .exp-auto-label { font-size: 12px; color: #78350f; }
+  .exp-auto-value { font-size: 12px; font-weight: 700; color: #92400e; }
+
+  @media (prefers-color-scheme: dark) {
+    .exp-auto-box { background: #1a1200; border-color: #6b4d00; }
+    .exp-auto-box-title { color: #fcd34d; }
+    .exp-auto-label { color: #fde68a; }
+    .exp-auto-value { color: #fcd34d; }
+    .exp-icon-wrap { background: #0a1628; }
+  }
+
+  /* ── Job info pill ── */
+  .job-pill {
+    margin-top: 8px; font-size: 11px; font-weight: 600;
+    color: var(--navy2); background: #e8f0fb;
+    border-radius: 7px; padding: 5px 9px;
+    border-left: 3px solid var(--navy3);
+  }
+
+  /* ── Detail mini-grid on cards ── */
+  .detail-grid {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 4px;
+    margin-top: 8px; background: #f0f3f9;
+    border-radius: 9px; padding: 8px 10px;
+  }
+  .detail-grid-item .dg-label { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .detail-grid-item .dg-value { font-size: 13px; font-weight: 700; color: var(--navy); margin-top: 1px; }
+
+  /* ── Profit note inside a form ── */
+  .info-note { font-size: 11px; color: var(--navy3); background: #e8f0fb; border-radius: 7px; padding: 5px 9px; margin: 4px 0 8px; text-align: center; border: 1px solid #c5d4ed; }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:      #080f1e;
+      --surface: #0f1d35;
+      --border:  #1e3050;
+      --muted:   #7a8fad;
+      --text:    #e8edf5;
+    }
+    body { background: var(--bg); }
+    .card { background: var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+    input, select, textarea { background: #0a1628; border-color: var(--border); color: var(--text); }
+    input:focus, select:focus, textarea:focus { background: #0f1d35; border-color: var(--navy3); }
+    input[readonly] { background: #0a1628; color: var(--muted); }
+    .calc-box { background: #0a1628; border-color: var(--border); }
+    .detail-grid { background: #0a1628; }
+    .job-pill { background: #0a1628; color: #a0b8d8; border-color: var(--navy3); }
+    .info-note { background: #0a1628; color: #7a9fc8; border-color: var(--border); }
+    .period-tabs { border-color: var(--navy3); }
+    .sort-btn.active { color: var(--gold2); }
+    .list-item-title, .job-name, .setting-label { color: #e8edf5; }
+    .card-title { color: var(--gold2); }
+    .btn-edit { background: #0a1628; color: #a0b8d8; border-color: var(--border); }
+    .btn-ghost { color: var(--muted); }
+    .btn-ghost:hover { background: #0a1628; }
+    .stat-card { box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+const LS = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const fmt$ = v => {
+  const n = Number(v) || 0;
+  return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const fmtPct = v => (Number(v) || 0).toFixed(1) + '%';
+const fmtHrs = v => { const n = Number(v) || 0; return n % 1 === 0 ? n + 'h' : n.toFixed(2) + 'h'; };
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = d => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; };
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// Jobs that count toward a given date (matched by dateStart)
+function jobsForDate(jobs, date) {
+  return jobs.filter(j => j.dateStart === date);
+}
+
+// Expense items for a given date
+function expensesForDate(expenseItems, date) {
+  return (expenseItems || []).filter(e => e.date === date);
+}
+
+// Full calc for a daily entry, incorporating jobs + expense log on the same date
+function calcEntry(entry, jobs, laborRate, expenseItems) {
+  const rate = Number(laborRate) || 30;
+  const matchedJobs = jobsForDate(jobs, entry.date);
+
+  const jobRevenue = matchedJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
+  const jobHours   = matchedJobs.reduce((s, j) => s + (Number(j.manHours) || 0), 0);
+
+  const additionalRevenue = Number(entry.additionalRevenue ?? entry.revenue ?? 0) || 0;
+  const totalRevenue = jobRevenue + additionalRevenue;
+
+  const enteredHours = Number(entry.manHours) || 0;
+  const totalHours  = Math.max(enteredHours, jobHours);
+  const travelHours = Math.max(0, totalHours - jobHours);
+
+  const labor     = totalHours * rate;
+  const gas       = Number(entry.gas) || 0;
+  const materials = Number(entry.materials) || 0;
+  const misc      = Number(entry.misc) || 0;
+
+  // Auto-sum from expense log for this date
+  const dayExpItems = expensesForDate(expenseItems, entry.date);
+  const expenseLogTotal = dayExpItems.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  const totalExp = labor + gas + materials + misc + expenseLogTotal;
+  const profit   = totalRevenue - totalExp;
+  const margin   = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
+
+  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, dayExpItems, totalExp, profit, margin };
+}
+
+function calcJob(j, laborRate) {
+  const labor   = (Number(j.manHours) || 0) * (Number(laborRate) || 30);
+  const revenue = Number(j.revenue) || 0;
+  const profit  = revenue - labor;
+  const margin  = revenue > 0 ? (profit / revenue) * 100 : 0;
+  return { labor, profit, margin };
+}
+
+// ─── Icons ─────────────────────────────────────────────────────
+const icons = {
+  daily: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  jobs:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+  dash:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+  settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  expenses: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
+  bills: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
+};
+
+function MoneyInput({ label, name, value, onChange, placeholder = "0.00", hint }) {
+  return (
+    <div className="form-group">
+      <label>{label}{hint && <span style={{ fontWeight: 400, color: '#a0aec0', marginLeft: 4 }}>{hint}</span>}</label>
+      <div className="input-prefix">
+        <span>$</span>
+        <input type="number" inputMode="decimal" name={name} value={value} onChange={onChange}
+          placeholder={placeholder} step="0.01" min="0" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Daily Entry Tab ────────────────────────────────────────────
+const EMPTY_ENTRY = { date: today(), additionalRevenue: '', manHours: '', gas: '', materials: '', misc: '', miscNote: '' };
+
+function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [form, setForm]         = useState(EMPTY_ENTRY);
+
+  const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
+
+  // Live preview uses current jobs
+  const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems), [form, jobs, laborRate, expenseItems]);
+
+  const openNew  = () => { setEditId(null); setForm({ ...EMPTY_ENTRY, date: today() }); setShowForm(true); };
+  const openEdit = entry => { setEditId(entry.id); setForm({ ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_ENTRY); };
+
+  const handleSubmit = () => {
+    if (!form.date) return;
+    const payload = { ...form, additionalRevenue: form.additionalRevenue ?? '', revenue: undefined };
+    if (editId) {
+      setEntries(prev => prev.map(e => e.id === editId ? { ...payload, id: editId } : e));
+    } else {
+      setEntries(prev => [{ ...payload, id: uid() }, ...prev]);
+    }
+    closeForm();
+  };
+
+  const handleDelete = id => { if (confirm('Delete this entry?')) setEntries(prev => prev.filter(e => e.id !== id)); };
+
+  // Jobs on the form's selected date (for live preview info)
+  const jobsOnFormDate = useMemo(() => jobsForDate(jobs, form.date), [jobs, form.date]);
+
+  return (
+    <div>
+      {!showForm && <button className="btn btn-primary" onClick={openNew} style={{ marginBottom: 12 }}>+ Add Daily Entry</button>}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-title">
+            {editId ? 'Edit Entry' : 'New Daily Entry'}
+            <button className="btn-ghost btn btn-sm" onClick={closeForm}>Cancel</button>
+          </div>
+
+          <div className="form-grid">
+            <div className="form-group span2">
+              <label>Date</label>
+              <input type="date" name="date" value={form.date} onChange={handleChange} />
+            </div>
+
+            {/* Job revenue read-only pull-in */}
+            <div className="form-group span2">
+              <label>Job Revenue <span className="auto-badge">AUTO</span></label>
+              <div className="input-prefix">
+                <span>$</span>
+                <input type="text" readOnly value={liveCalc.jobRevenue.toFixed(2)}
+                  style={{ fontStyle: liveCalc.jobRevenue === 0 ? 'italic' : 'normal' }} />
+              </div>
+              {jobsOnFormDate.length > 0
+                ? <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
+                    {jobsOnFormDate.length} job{jobsOnFormDate.length > 1 ? 's' : ''} on this date: {jobsOnFormDate.map(j => j.client).join(', ')}
+                  </span>
+                : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No jobs logged for this date</span>
+              }
+            </div>
+
+            <MoneyInput label="Additional Revenue" hint="(optional)" name="additionalRevenue" value={form.additionalRevenue} onChange={handleChange} />
+            <div className="form-group">
+              <label>Total Hours Worked</label>
+              <input type="number" inputMode="decimal" name="manHours" value={form.manHours}
+                onChange={handleChange} placeholder="0.0" step="0.25" min="0" />
+              {liveCalc.jobHours > 0 && (
+                <span style={{ fontSize: 11, color: '#a0aec0', marginTop: 2 }}>
+                  Job hrs: {fmtHrs(liveCalc.jobHours)} · Travel = {fmtHrs(liveCalc.travelHours)}
+                </span>
+              )}
+            </div>
+
+            <MoneyInput label="Gas / Fuel"  name="gas"       value={form.gas}       onChange={handleChange} />
+            <MoneyInput label="Materials"   name="materials" value={form.materials} onChange={handleChange} />
+            <div className="form-group span2">
+              <label>Misc Expenses</label>
+              <div className="input-prefix">
+                <span>$</span>
+                <input type="number" inputMode="decimal" name="misc" value={form.misc} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+              </div>
+            </div>
+            <div className="form-group span2">
+              <label>Misc Note (optional)</label>
+              <textarea name="miscNote" value={form.miscNote} onChange={handleChange} placeholder="e.g. equipment rental..." rows={2} />
+            </div>
+          </div>
+
+          {/* Hours breakdown strip */}
+          {(liveCalc.totalHours > 0 || liveCalc.jobHours > 0) && (
+            <div className="hours-strip">
+              <div className="hours-cell">
+                <div className="hours-cell-label">Job Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(liveCalc.jobHours)}</div>
+                <div className="hours-cell-sub">billable</div>
+              </div>
+              <div className="hours-cell travel">
+                <div className="hours-cell-label">Travel Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(liveCalc.travelHours)}</div>
+                <div className="hours-cell-sub">drive time</div>
+              </div>
+              <div className="hours-cell">
+                <div className="hours-cell-label">Total Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(liveCalc.totalHours)}</div>
+                <div className="hours-cell-sub">all in</div>
+              </div>
+            </div>
+          )}
+
+          <div className="calc-box">
+            <div className="calc-section-label">Revenue</div>
+            <div className="calc-row"><span className="calc-label">Job Revenue (auto)</span><span className="calc-value blue">{fmt$(liveCalc.jobRevenue)}</span></div>
+            <div className="calc-row"><span className="calc-label">Additional Revenue</span><span className="calc-value blue">{fmt$(liveCalc.additionalRevenue)}</span></div>
+            <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Revenue</span><span className="calc-value blue">{fmt$(liveCalc.totalRevenue)}</span></div>
+
+            <div className="calc-section-label" style={{ marginTop: 10 }}>Expenses</div>
+            <div className="calc-row"><span className="calc-label">Labor ({fmtHrs(liveCalc.totalHours)} × ${laborRate})</span><span className="calc-value red">{fmt$(liveCalc.labor)}</span></div>
+            <div className="calc-row"><span className="calc-label">Gas / Fuel</span><span className="calc-value red">{fmt$(liveCalc.gas)}</span></div>
+            <div className="calc-row"><span className="calc-label">Materials</span><span className="calc-value red">{fmt$(liveCalc.materials)}</span></div>
+            <div className="calc-row"><span className="calc-label">Misc</span><span className="calc-value red">{fmt$(liveCalc.misc)}</span></div>
+            <div className="calc-row">
+              <span className="calc-label">Expense Log <span className="auto-badge">AUTO</span></span>
+              <span className="calc-value red">{fmt$(liveCalc.expenseLogTotal)}{liveCalc.dayExpItems.length > 0 ? <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 4 }}>({liveCalc.dayExpItems.length} items)</span> : null}</span>
+            </div>
+            <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Expenses</span><span className="calc-value red">{fmt$(liveCalc.totalExp)}</span></div>
+
+            <div className="calc-section-label" style={{ marginTop: 10 }}>Bottom Line</div>
+            <div className="calc-row"><span className="calc-label">Net Profit</span><span className={`calc-value ${liveCalc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(liveCalc.profit)}</span></div>
+            <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${liveCalc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(liveCalc.margin)}</span></div>
+          </div>
+
+          <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Save Entry'}</button>
+        </div>
+      )}
+
+      {entries.length === 0 && !showForm && (
+        <div className="empty"><div className="empty-icon">📋</div><p>No daily entries yet.<br/>Tap above to log your first day.</p></div>
+      )}
+
+      {entries.map(entry => {
+        const c = calcEntry(entry, jobs, laborRate, expenseItems);
+        const matchedJobs = jobsForDate(jobs, entry.date);
+        return (
+          <div key={entry.id} className="card">
+            <div className="list-item-header">
+              <div>
+                <div className="list-item-title">{fmtDate(entry.date)}</div>
+                <div className="list-item-sub">Revenue {fmt$(c.totalRevenue)} · {fmtHrs(c.totalHours)} worked</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className={`calc-value ${c.profit >= 0 ? 'green' : 'red'}`} style={{ fontSize: 17 }}>{fmt$(c.profit)}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtPct(c.margin)} margin</div>
+              </div>
+            </div>
+
+            {/* Hours breakdown */}
+            <div className="hours-strip" style={{ marginTop: 10 }}>
+              <div className="hours-cell">
+                <div className="hours-cell-label">Job Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(c.jobHours)}</div>
+                <div className="hours-cell-sub">{matchedJobs.length} job{matchedJobs.length !== 1 ? 's' : ''}</div>
+              </div>
+              <div className="hours-cell travel">
+                <div className="hours-cell-label">Travel Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(c.travelHours)}</div>
+                <div className="hours-cell-sub">drive time</div>
+              </div>
+              <div className="hours-cell">
+                <div className="hours-cell-label">Total Hrs</div>
+                <div className="hours-cell-value">{fmtHrs(c.totalHours)}</div>
+                <div className="hours-cell-sub">all in</div>
+              </div>
+            </div>
+
+            <div className="detail-grid">
+              <div className="detail-grid-item"><div className="dg-label">Labor</div><div className="dg-value">{fmt$(c.labor)}</div></div>
+              <div className="detail-grid-item"><div className="dg-label">Gas+Mat</div><div className="dg-value">{fmt$(c.gas + c.materials)}</div></div>
+              <div className="detail-grid-item"><div className="dg-label">Misc</div><div className="dg-value">{fmt$(c.misc)}{entry.miscNote ? <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', fontWeight: 400 }}>{entry.miscNote}</span> : null}</div></div>
+            </div>
+
+            {/* Expense log items auto-pulled for this date */}
+            {c.dayExpItems.length > 0 && (
+              <div className="exp-auto-box">
+                <div className="exp-auto-box-title">Expense Log ({c.dayExpItems.length} item{c.dayExpItems.length !== 1 ? 's' : ''}) <span className="auto-badge">AUTO</span></div>
+                {c.dayExpItems.map(ei => (
+                  <div key={ei.id} className="exp-auto-row">
+                    <span className="exp-auto-label">{ei.description}{ei.vendor ? ` · ${ei.vendor}` : ''}</span>
+                    <span className="exp-auto-value">{fmt$(ei.amount)}</span>
+                  </div>
+                ))}
+                <div className="exp-auto-row" style={{ borderTop: '1px solid #f0d080', marginTop: 4, paddingTop: 4 }}>
+                  <span className="exp-auto-label" style={{ fontWeight: 700 }}>Total from log</span>
+                  <span className="exp-auto-value" style={{ fontSize: 13 }}>{fmt$(c.expenseLogTotal)}</span>
+                </div>
+              </div>
+            )}
+
+            {matchedJobs.length > 0 && (
+              <div className="job-pill">
+                Jobs: {matchedJobs.map(j => `${j.client} (${fmt$(j.revenue)})`).join(' · ')}
+              </div>
+            )}
+
+            <div className="list-item-actions">
+              <button className="btn btn-sm btn-edit" onClick={() => openEdit(entry)}>Edit</button>
+              <button className="btn btn-sm btn-danger" onClick={() => handleDelete(entry.id)}>Delete</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Jobs Tab ──────────────────────────────────────────────────
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress' };
+
+function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editJob, setEditJob]   = useState(null);
+  const [form, setForm]         = useState(EMPTY_JOB);
+  const [sortKey, setSortKey]   = useState('dateStart');
+  const [sortDir, setSortDir]   = useState(-1);
+
+  const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
+  const calc = useMemo(() => calcJob(form, laborRate), [form, laborRate]);
+
+  const openNew  = () => { setEditJob(null); setForm(EMPTY_JOB); setShowForm(true); };
+  const openEdit = j  => { setEditJob(j);    setForm(j);         setShowForm(true); };
+
+  // Ensure a minimal daily entry exists for a given date
+  const ensureDailyEntry = (date) => {
+    setEntries(prev => {
+      if (prev.some(e => e.date === date)) return prev;
+      return [{ id: uid(), date, additionalRevenue: '', manHours: '', gas: '', materials: '', misc: '', miscNote: '' }, ...prev];
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!form.client || !form.revenue) return;
+    if (editJob) {
+      setJobs(prev => prev.map(j => j.id === editJob.id ? { ...form, id: editJob.id } : j));
+    } else {
+      setJobs(prev => [{ ...form, id: uid() }, ...prev]);
+    }
+    // Auto-create a daily entry for the job date if one doesn't exist
+    if (form.dateStart) ensureDailyEntry(form.dateStart);
+    setShowForm(false); setEditJob(null); setForm(EMPTY_JOB);
+  };
+
+  const handleDelete = id => {
+    if (confirm('Delete this job?')) setJobs(prev => prev.filter(j => j.id !== id));
+  };
+
+  const toggleSort = key => {
+    if (sortKey === key) setSortDir(d => -d);
+    else { setSortKey(key); setSortDir(-1); }
+  };
+
+  const sorted = useMemo(() => {
+    return [...jobs].sort((a, b) => {
+      let av, bv;
+      if (sortKey === 'profit')   { av = calcJob(a, laborRate).profit;  bv = calcJob(b, laborRate).profit;  }
+      else if (sortKey === 'margin') { av = calcJob(a, laborRate).margin; bv = calcJob(b, laborRate).margin; }
+      else if (sortKey === 'revenue') { av = Number(a.revenue)||0; bv = Number(b.revenue)||0; }
+      else { av = a.dateStart; bv = b.dateStart; }
+      return sortDir * (av > bv ? 1 : av < bv ? -1 : 0);
+    });
+  }, [jobs, sortKey, sortDir, laborRate]);
+
+  return (
+    <div>
+      {!showForm && <button className="btn btn-primary" onClick={openNew} style={{ marginBottom: 12 }}>+ Add Job</button>}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-title">
+            {editJob ? 'Edit Job' : 'New Job'}
+            <button className="btn-ghost btn btn-sm" onClick={() => { setShowForm(false); setEditJob(null); }}>Cancel</button>
+          </div>
+          <div className="form-grid">
+            <div className="form-group span2">
+              <label>Client Name</label>
+              <input name="client" value={form.client} onChange={handleChange} placeholder="Smith Residence" />
+            </div>
+            <div className="form-group span2">
+              <label>Job Description</label>
+              <input name="description" value={form.description} onChange={handleChange} placeholder="Driveway + house wash" />
+            </div>
+            <div className="form-group">
+              <label>Start Date</label>
+              <input type="date" name="dateStart" value={form.dateStart} onChange={handleChange} />
+            </div>
+            <div className="form-group">
+              <label>End Date (opt.)</label>
+              <input type="date" name="dateEnd" value={form.dateEnd} onChange={handleChange} />
+            </div>
+            <MoneyInput label="Job Revenue" name="revenue" value={form.revenue} onChange={handleChange} />
+            <div className="form-group">
+              <label>Man Hours</label>
+              <input type="number" inputMode="decimal" name="manHours" value={form.manHours} onChange={handleChange} placeholder="0.0" step="0.25" min="0" />
+            </div>
+            <div className="form-group span2">
+              <label>Status</label>
+              <select name="status" value={form.status} onChange={handleChange}>
+                <option>In Progress</option>
+                <option>Completed</option>
+                <option>Scheduled</option>
+                <option>Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="calc-box">
+            <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
+            <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
+            <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
+          </div>
+
+          <p className="info-note">
+            Saving will auto-create a daily entry for {fmtDate(form.dateStart) || 'this date'} if none exists.
+          </p>
+
+          <button className="btn btn-primary" onClick={handleSubmit}>{editJob ? 'Save Changes' : 'Save Job'}</button>
+        </div>
+      )}
+
+      {jobs.length === 0 && !showForm && (
+        <div className="empty"><div className="empty-icon">🚿</div><p>No jobs logged yet.<br/>Tap above to add your first job.</p></div>
+      )}
+
+      {jobs.length > 0 && (
+        <div className="card">
+          <div className="sort-header">
+            <button className={`sort-btn ${sortKey==='dateStart'?'active':''}`} onClick={() => toggleSort('dateStart')}>
+              Client / Job {sortKey==='dateStart' ? (sortDir>0?'↑':'↓') : ''}
+            </button>
+            <button className={`sort-btn ${sortKey==='revenue'?'active':''}`} onClick={() => toggleSort('revenue')}>
+              Revenue {sortKey==='revenue' ? (sortDir>0?'↑':'↓') : ''}
+            </button>
+            <button className={`sort-btn ${sortKey==='margin'?'active':''}`} onClick={() => toggleSort('margin')}>
+              Margin {sortKey==='margin' ? (sortDir>0?'↑':'↓') : ''}
+            </button>
+          </div>
+          {sorted.map(job => {
+            const c = calcJob(job, laborRate);
+            const statusColor = job.status === 'Completed' ? 'badge-green' : job.status === 'In Progress' ? 'badge-blue' : job.status === 'Cancelled' ? 'badge-orange' : 'badge-yellow';
+            return (
+              <div key={job.id} className="list-item">
+                <div className="job-row">
+                  <div>
+                    <div className="job-name">{job.client}</div>
+                    <div className="job-date">{job.description} · {fmtDate(job.dateStart)}</div>
+                    <span className={`badge ${statusColor}`} style={{ marginTop: 3, display: 'inline-block' }}>{job.status}</span>
+                  </div>
+                  <div>
+                    <div className="job-num">{fmt$(job.revenue)}</div>
+                    <div className="job-sub">{fmtHrs(job.manHours)}</div>
+                  </div>
+                  <div>
+                    <div className={`job-num ${c.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(c.margin)}</div>
+                    <div className={`job-sub ${c.profit >= 0 ? '' : 'red'}`}>{fmt$(c.profit)}</div>
+                  </div>
+                </div>
+                <div className="list-item-actions">
+                  <button className="btn btn-sm btn-edit" onClick={() => openEdit(job)}>Edit</button>
+                  <button className="btn btn-sm btn-danger" onClick={() => handleDelete(job.id)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Charts ─────────────────────────────────────────────────────
+function BarChart({ labels, datasets, key: _ }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(ref.current, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, callback: v => '$' + v.toLocaleString() } }
+        },
+      }
+    });
+    return () => chartRef.current?.destroy();
+  }, [labels, datasets]);
+  return <canvas ref={ref} />;
+}
+
+function LineChart({ labels, datasets }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(ref.current, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, padding: 10 } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, callback: v => '$' + v.toLocaleString() } }
+        },
+        elements: { point: { radius: 3 }, line: { tension: 0.3 } },
+      }
+    });
+    return () => chartRef.current?.destroy();
+  }, [labels, datasets]);
+  return <canvas ref={ref} />;
+}
+
+// ─── Dashboard ──────────────────────────────────────────────────
+function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
+  const [period, setPeriod] = useState('week');
+  const [chartMode, setChartMode] = useState('day');
+
+  const now = new Date();
+  const todayStr = today();
+  const dow = now.getDay();
+  const diffToMon = (dow === 0 ? -6 : 1 - dow);
+  const weekStart = new Date(now); weekStart.setDate(now.getDate() + diffToMon);
+  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const toStr = d => d.toISOString().slice(0, 10);
+  const weekStartStr = toStr(weekStart);
+  const weekEndStr   = toStr(weekEnd);
+  const monthStart   = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
+  const filterEntries = (start, end) => entries.filter(e => e.date >= start && e.date <= end);
+
+  const rollup = es => es.reduce((acc, e) => {
+    const c = calcEntry(e, jobs, laborRate, expenseItems);
+    acc.revenue  += c.totalRevenue;
+    acc.expenses += c.totalExp;
+    acc.profit   += c.profit;
+    acc.hours    += c.totalHours;
+    acc.travel   += c.travelHours;
+    acc.jobHours += c.jobHours;
+    return acc;
+  }, { revenue: 0, expenses: 0, profit: 0, hours: 0, travel: 0, jobHours: 0 });
+
+  const todayStats = rollup(filterEntries(todayStr, todayStr));
+  const weekStats  = rollup(filterEntries(weekStartStr, weekEndStr));
+  const monthStats = rollup(filterEntries(monthStart, todayStr));
+  const statsToShow = period === 'today' ? todayStats : period === 'week' ? weekStats : monthStats;
+  const statsLabel  = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
+
+  // Monthly overhead from bills
+  const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  const monthNetAfterBills = monthStats.profit - totalBills;
+
+  const last14 = useMemo(() => {
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i);
+      days.push(toStr(d));
+    }
+    return days.map(d => {
+      const es = filterEntries(d, d);
+      const r = rollup(es);
+      return { date: d, label: d.slice(5).replace('-', '/'), ...r };
+    });
+  }, [entries, jobs, laborRate]);
+
+  const last8weeks = useMemo(() => {
+    const weeks = [];
+    for (let i = 7; i >= 0; i--) {
+      const wMon = new Date(weekStart); wMon.setDate(weekStart.getDate() - i * 7);
+      const wSun = new Date(wMon); wSun.setDate(wMon.getDate() + 6);
+      const es = filterEntries(toStr(wMon), toStr(wSun));
+      const r = rollup(es);
+      weeks.push({ label: `${String(wMon.getMonth()+1)}/${String(wMon.getDate())}`, ...r });
+    }
+    return weeks;
+  }, [entries, jobs, laborRate]);
+
+  const chartData = chartMode === 'day' ? last14 : last8weeks;
+
+  const jobsSorted = useMemo(() => {
+    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate) })).sort((a, b) => b.margin - a.margin);
+  }, [jobs, laborRate]);
+
+  return (
+    <div>
+      <div className="period-tabs">
+        {[['today','Today'],['week','Week'],['month','Month']].map(([v, l]) => (
+          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => setPeriod(v)}>{l}</button>
+        ))}
+      </div>
+
+      <div className="stat-grid">
+        <div className="stat-card">
+          <div className="stat-label">Revenue</div>
+          <div className="stat-value blue">{fmt$(statsToShow.revenue)}</div>
+          <div className="stat-sub">{statsLabel}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Net Profit</div>
+          <div className={`stat-value ${statsToShow.profit >= 0 ? 'green' : 'red'}`}>{fmt$(statsToShow.profit)}</div>
+          <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.profit/statsToShow.revenue*100) + ' margin' : '–'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Job Hours</div>
+          <div className="stat-value blue">{fmtHrs(statsToShow.jobHours)}</div>
+          <div className="stat-sub">{statsToShow.hours > 0 && statsToShow.revenue > 0 ? fmt$(statsToShow.revenue / statsToShow.hours) + '/hr' : '–'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Travel Hours</div>
+          <div className="stat-value orange">{fmtHrs(statsToShow.travel)}</div>
+          <div className="stat-sub">of {fmtHrs(statsToShow.hours)} total</div>
+        </div>
+      </div>
+
+      {/* Monthly overhead section — only shown on Month tab */}
+      {period === 'month' && bills && bills.length > 0 && (
+        <div className="card" style={{ borderTopColor: 'var(--loss)' }}>
+          <div className="card-title" style={{ color: 'var(--loss)' }}>Monthly Overhead (Fixed Bills)</div>
+
+          {/* Two-number banner: overhead vs net after bills */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: '3px solid #f87171' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Fixed Overhead</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#f87171', marginTop: 4 }}>{fmt$(totalBills)}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{bills.length} bill{bills.length !== 1 ? 's' : ''} / mo</div>
+            </div>
+            <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: `3px solid ${monthNetAfterBills >= 0 ? '#4ade80' : '#f87171'}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Net After Bills</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: monthNetAfterBills >= 0 ? '#4ade80' : '#f87171', marginTop: 4 }}>{fmt$(monthNetAfterBills)}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>job profit − bills</div>
+            </div>
+          </div>
+
+          {/* Bill list */}
+          {bills.map(b => (
+            <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>{b.icon || '🧾'}</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{b.name}</div>
+                  {b.vendor && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{b.vendor}</div>}
+                </div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--loss)' }}>{fmt$(b.amount)}<span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>/mo</span></div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4, borderTop: '2px solid var(--navy)' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>Daily avg overhead</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--loss)' }}>{fmt$(totalBills / 30)}/day</span>
+          </div>
+        </div>
+      )}
+
+      {period === 'month' && bills && bills.length === 0 && (
+        <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px dashed var(--border)', textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>No fixed bills logged — add them in the <strong>Bills</strong> tab to see monthly overhead here.</div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-title">
+          Revenue vs Expenses
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button className={`btn btn-sm ${chartMode==='day'?'btn-primary':'btn-edit'}`} onClick={() => setChartMode('day')} style={{ fontSize: 11 }}>Daily</button>
+            <button className={`btn btn-sm ${chartMode==='week'?'btn-primary':'btn-edit'}`} onClick={() => setChartMode('week')} style={{ fontSize: 11 }}>Weekly</button>
+          </div>
+        </div>
+        <div className="chart-wrap">
+          <BarChart
+            key={chartMode + entries.length + jobs.length}
+            labels={chartData.map(d => d.label)}
+            datasets={[
+              { label: 'Revenue',  data: chartData.map(d => d.revenue),  backgroundColor: '#3182ce88', borderColor: '#3182ce', borderWidth: 1.5, borderRadius: 4 },
+              { label: 'Expenses', data: chartData.map(d => d.expenses), backgroundColor: '#e53e3e55', borderColor: '#e53e3e', borderWidth: 1.5, borderRadius: 4 },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Profit Trend (14 days)</div>
+        <div className="chart-wrap">
+          <LineChart
+            key={'profit' + entries.length + jobs.length}
+            labels={last14.map(d => d.label)}
+            datasets={[
+              { label: 'Profit', data: last14.map(d => d.profit), borderColor: '#38a169', backgroundColor: '#38a16920', fill: true, borderWidth: 2 },
+            ]}
+          />
+        </div>
+      </div>
+
+      {jobsSorted.length > 0 && (
+        <div className="card">
+          <div className="card-title">Job Profitability</div>
+          <div className="sort-header">
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#718096' }}>Client / Job</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#718096', textAlign: 'right' }}>Revenue</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#718096', textAlign: 'right' }}>Margin</span>
+          </div>
+          {jobsSorted.slice(0, 10).map(j => (
+            <div key={j.id} className="job-row">
+              <div>
+                <div className="job-name">{j.client}</div>
+                <div className="job-date">{j.description}</div>
+              </div>
+              <div>
+                <div className="job-num">{fmt$(j.revenue)}</div>
+                <div className="job-sub">{fmt$(j.profit)} profit</div>
+              </div>
+              <div>
+                <div className={`job-num ${j.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(j.margin)}</div>
+                <span className={`badge ${j.status==='Completed'?'badge-green':j.status==='In Progress'?'badge-blue':'badge-yellow'}`}>{j.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {jobsSorted.length === 0 && entries.length === 0 && (
+        <div className="empty"><div className="empty-icon">📊</div><p>Add daily entries and jobs to see your dashboard stats and charts here.</p></div>
+      )}
+    </div>
+  );
+}
+
+// ─── Settings ──────────────────────────────────────────────────
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems }) {
+  const [rate, setRate] = useState(laborRate);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    const r = Number(rate);
+    if (r > 0) { setLaborRate(r); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  };
+
+  const exportCSV = () => {
+    const rows = [['Date','Job Revenue','Additional Revenue','Total Revenue','Man Hours','Job Hours','Travel Hours','Labor Cost','Gas','Materials','Misc','Misc Note','Total Expenses','Net Profit','Margin %']];
+    entries.forEach(e => {
+      const c = calcEntry(e, jobs, laborRate, expenseItems);
+      rows.push([e.date, c.jobRevenue.toFixed(2), c.additionalRevenue.toFixed(2), c.totalRevenue.toFixed(2), c.totalHours, c.jobHours.toFixed(2), c.travelHours.toFixed(2), c.labor.toFixed(2), e.gas||0, e.materials||0, e.misc||0, e.miscNote||'', c.expenseLogTotal.toFixed(2), c.totalExp.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1)]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `cpw-entries-${today()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportJobsCSV = () => {
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Profit','Margin %','Status']];
+    jobs.forEach(j => {
+      const c = calcJob(j, laborRate);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `cpw-jobs-${today()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportBackup = () => {
+    const data = JSON.stringify({ entries, jobs, laborRate }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `cpw-backup-${today()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearAll = () => {
+    if (confirm('Delete ALL data? This cannot be undone.')) {
+      localStorage.removeItem('cpw_entries');
+      localStorage.removeItem('cpw_jobs');
+      localStorage.removeItem('cpw_expenses');
+      localStorage.removeItem('cpw_bills');
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div>
+      <div className="card">
+        <div className="card-title">Labor Rate</div>
+        <div className="setting-row">
+          <div className="setting-label">Cost per Man-Hour</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="input-prefix" style={{ flex: 1 }}>
+              <span>$</span>
+              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} min="1" step="0.50" />
+            </div>
+            <button className="btn btn-primary" style={{ width: 'auto', padding: '9px 18px', marginTop: 0 }} onClick={handleSave}>
+              {saved ? '✓ Saved' : 'Save'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 6 }}>
+            Covers $25/hr wage + payroll tax burden. Applied to all labor calculations including travel time.
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Export Data</div>
+        <div className="setting-row">
+          <button className="btn btn-edit btn-sm btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportCSV}>
+            📥 Export Daily Entries (CSV)
+          </button>
+          <button className="btn btn-edit btn-sm btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportJobsCSV}>
+            📥 Export Jobs (CSV)
+          </button>
+          <button className="btn btn-edit btn-sm btn" style={{ width: '100%' }} onClick={exportBackup}>
+            💾 Backup All Data (JSON)
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">About</div>
+        <div className="setting-row">
+          <div style={{ fontSize: 13, color: '#718096', lineHeight: 1.6 }}>
+            <strong>Chesapeake Pro Wash</strong><br />
+            Profitability Tracker v1.1<br />
+            All data stored locally on this device.<br />
+            No account or internet required.
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title" style={{ color: '#c53030' }}>Danger Zone</div>
+        <div className="setting-row">
+          <button className="btn btn-danger btn" style={{ width: '100%' }} onClick={clearAll}>
+            🗑 Clear All Data
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bills Tab ─────────────────────────────────────────────────
+const BILL_ICONS = ['💡','📱','🚗','🏠','🌐','🛡️','⚙️','🔧','💧','📦','🧾','💼'];
+const EMPTY_BILL = { name: '', vendor: '', amount: '', icon: '💡' };
+
+function BillsTab({ bills, setBills }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [form, setForm]         = useState(EMPTY_BILL);
+
+  const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
+
+  const openNew  = () => { setEditId(null); setForm(EMPTY_BILL); setShowForm(true); };
+  const openEdit = b  => { setEditId(b.id); setForm(b);          setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_BILL); };
+
+  const handleSubmit = () => {
+    if (!form.name || !form.amount) return;
+    if (editId) {
+      setBills(prev => prev.map(b => b.id === editId ? { ...form, id: editId } : b));
+    } else {
+      setBills(prev => [...prev, { ...form, id: uid() }]);
+    }
+    closeForm();
+  };
+
+  const handleDelete = id => {
+    if (confirm('Remove this bill?')) setBills(prev => prev.filter(b => b.id !== id));
+  };
+
+  const totalMonthly = bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+
+  return (
+    <div>
+      {!showForm && (
+        <button className="btn btn-primary" onClick={openNew} style={{ marginBottom: 12 }}>
+          + Add Bill
+        </button>
+      )}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-title">
+            {editId ? 'Edit Bill' : 'New Monthly Bill'}
+            <button className="btn-ghost btn btn-sm" onClick={closeForm}>Cancel</button>
+          </div>
+
+          {/* Icon picker */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6 }}>Icon</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {BILL_ICONS.map(ic => (
+                <button key={ic} onClick={() => setForm(f => ({ ...f, icon: ic }))}
+                  style={{ fontSize: 22, width: 40, height: 40, borderRadius: 10, border: form.icon === ic ? '2px solid var(--gold)' : '2px solid var(--border)', background: form.icon === ic ? 'var(--navy)' : 'var(--bg)', cursor: 'pointer' }}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <div className="form-group span2">
+              <label>Bill Name</label>
+              <input name="name" value={form.name} onChange={handleChange} placeholder="e.g. Truck Insurance, Phone Plan…" />
+            </div>
+            <div className="form-group span2">
+              <label>Who's it from? (vendor / provider)</label>
+              <input name="vendor" value={form.vendor} onChange={handleChange} placeholder="e.g. Geico, Verizon, Home Depot CC…" />
+            </div>
+            <div className="form-group span2">
+              <label>Monthly Amount</label>
+              <div className="input-prefix">
+                <span>$</span>
+                <input type="number" inputMode="decimal" name="amount" value={form.amount} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+              </div>
+            </div>
+          </div>
+          <p className="info-note">Fixed bills appear in the Monthly view of the Dashboard as overhead.</p>
+          <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Save Bill'}</button>
+        </div>
+      )}
+
+      {bills.length === 0 && !showForm && (
+        <div className="empty">
+          <div className="empty-icon">🧾</div>
+          <p>No bills logged yet.<br/>Add your fixed monthly overhead here — insurance, phone, fuel cards, software, etc.</p>
+        </div>
+      )}
+
+      {bills.length > 0 && (
+        <>
+          {/* Monthly total banner */}
+          <div style={{ background: 'var(--navy)', borderRadius: 14, padding: '14px 16px', marginBottom: 12, border: '2px solid var(--gold)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.6px', fontFamily: 'Oswald, sans-serif' }}>Monthly Overhead</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: '#f87171', marginTop: 2 }}>{fmt$(totalMonthly)}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>{bills.length} bill{bills.length !== 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 13, color: 'var(--gold2)', fontWeight: 700, marginTop: 4 }}>{fmt$(totalMonthly / 30)}/day avg</div>
+            </div>
+          </div>
+
+          <div className="card">
+            {bills.map(bill => (
+              <div key={bill.id} className="bill-row">
+                <div className="bill-icon-wrap">{bill.icon || '🧾'}</div>
+                <div className="bill-body">
+                  <div className="bill-name">{bill.name}</div>
+                  {bill.vendor && <div className="bill-vendor">📍 {bill.vendor}</div>}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <div className="bill-amount">{fmt$(bill.amount)}<span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500 }}>/mo</span></div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-sm btn-edit" onClick={() => openEdit(bill)}>Edit</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(bill.id)}>Del</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Expenses Tab ──────────────────────────────────────────────
+const CATEGORY_META = {
+  'Gas/Fuel':   { icon: '⛽', cls: 'exp-cat-gas' },
+  'Materials':  { icon: '🧴', cls: 'exp-cat-materials' },
+  'Equipment':  { icon: '🔧', cls: 'exp-cat-equipment' },
+  'Misc':       { icon: '📦', cls: 'exp-cat-misc' },
+};
+const CATEGORIES = Object.keys(CATEGORY_META);
+const EMPTY_EXP = { date: today(), description: '', amount: '', vendor: '', category: 'Misc' };
+
+function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId]     = useState(null);
+  const [form, setForm]         = useState(EMPTY_EXP);
+  const [filterDate, setFilterDate] = useState('');
+
+  const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
+
+  const ensureDailyEntry = date => {
+    setEntries(prev => {
+      if (prev.some(e => e.date === date)) return prev;
+      return [{ id: uid(), date, additionalRevenue: '', manHours: '', gas: '', materials: '', misc: '', miscNote: '' }, ...prev];
+    });
+  };
+
+  const openNew  = () => { setEditId(null); setForm({ ...EMPTY_EXP, date: today() }); setShowForm(true); };
+  const openEdit = item => { setEditId(item.id); setForm(item); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_EXP); };
+
+  const handleSubmit = () => {
+    if (!form.description || !form.amount || !form.date) return;
+    if (editId) {
+      setExpenseItems(prev => prev.map(e => e.id === editId ? { ...form, id: editId } : e));
+    } else {
+      setExpenseItems(prev => [{ ...form, id: uid() }, ...prev]);
+      ensureDailyEntry(form.date);
+    }
+    closeForm();
+  };
+
+  const handleDelete = id => {
+    if (confirm('Delete this expense?')) setExpenseItems(prev => prev.filter(e => e.id !== id));
+  };
+
+  const displayed = filterDate
+    ? expenseItems.filter(e => e.date === filterDate)
+    : expenseItems;
+
+  // Group by date for display
+  const grouped = displayed.reduce((acc, e) => {
+    (acc[e.date] = acc[e.date] || []).push(e);
+    return acc;
+  }, {});
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  const totalShown = displayed.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  return (
+    <div>
+      {!showForm && (
+        <button className="btn btn-primary" onClick={openNew} style={{ marginBottom: 12 }}>
+          + Log Expense
+        </button>
+      )}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-title">
+            {editId ? 'Edit Expense' : 'New Expense'}
+            <button className="btn-ghost btn btn-sm" onClick={closeForm}>Cancel</button>
+          </div>
+          <div className="form-grid">
+            <div className="form-group span2">
+              <label>Date</label>
+              <input type="date" name="date" value={form.date} onChange={handleChange} />
+            </div>
+            <div className="form-group span2">
+              <label>What was it?</label>
+              <input name="description" value={form.description} onChange={handleChange} placeholder="e.g. Surface Cleaner Detergent" />
+            </div>
+            <div className="form-group">
+              <label>Amount</label>
+              <div className="input-prefix">
+                <span>$</span>
+                <input type="number" inputMode="decimal" name="amount" value={form.amount} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Category</label>
+              <select name="category" value={form.category} onChange={handleChange}>
+                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group span2">
+              <label>Where from? (store / vendor)</label>
+              <input name="vendor" value={form.vendor} onChange={handleChange} placeholder="e.g. Home Depot, Amazon…" />
+            </div>
+          </div>
+          <p className="info-note">This expense will automatically appear in the Daily Entry for {fmtDate(form.date) || 'this date'}.</p>
+          <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Log Expense'}</button>
+        </div>
+      )}
+
+      {expenseItems.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card-title">Filter by Date</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} style={{ flex: 1 }} />
+            {filterDate && <button className="btn btn-ghost btn-sm" onClick={() => setFilterDate('')}>Clear</button>}
+          </div>
+          {filterDate && (
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>{displayed.length} item{displayed.length !== 1 ? 's' : ''}</span>
+              <span style={{ fontWeight: 700, color: 'var(--loss)' }}>Total: {fmt$(totalShown)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {expenseItems.length === 0 && !showForm && (
+        <div className="empty">
+          <div className="empty-icon">🧾</div>
+          <p>No expenses logged yet.<br/>Tap above to record a purchase.</p>
+        </div>
+      )}
+
+      {sortedDates.map(date => {
+        const items = grouped[date];
+        const dayTotal = items.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        return (
+          <div key={date} className="card">
+            <div className="card-title">
+              {fmtDate(date)}
+              <span style={{ color: 'var(--loss)', fontSize: 14, fontFamily: 'Inter', fontWeight: 800 }}>{fmt$(dayTotal)}</span>
+            </div>
+            {items.map(item => {
+              const meta = CATEGORY_META[item.category] || CATEGORY_META['Misc'];
+              return (
+                <div key={item.id} className="exp-list-item">
+                  <div className="exp-icon-wrap">{meta.icon}</div>
+                  <div className="exp-body">
+                    <div className="exp-desc">{item.description}</div>
+                    <div className="exp-meta">
+                      <span className={`exp-cat-pill ${meta.cls}`}>{item.category}</span>
+                      {item.vendor && <span style={{ marginLeft: 6 }}>📍 {item.vendor}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <div className="exp-amount">{fmt$(item.amount)}</div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="btn btn-sm btn-edit" onClick={() => openEdit(item)}>Edit</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>Del</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Root App ──────────────────────────────────────────────────
+function App() {
+  const [tab, setTab]               = useState('dash');
+  const [entries, setEntries]       = useState(() => LS.get('cpw_entries', []));
+  const [jobs, setJobs]             = useState(() => LS.get('cpw_jobs', []));
+  const [expenseItems, setExpenseItems] = useState(() => LS.get('cpw_expenses', []));
+  const [bills, setBills]           = useState(() => LS.get('cpw_bills', []));
+  const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
+
+  useEffect(() => { LS.set('cpw_entries',  entries);      }, [entries]);
+  useEffect(() => { LS.set('cpw_jobs',     jobs);         }, [jobs]);
+  useEffect(() => { LS.set('cpw_expenses', expenseItems); }, [expenseItems]);
+  useEffect(() => { LS.set('cpw_bills',    bills);        }, [bills]);
+  useEffect(() => { LS.set('cpw_laborRate', laborRate);   }, [laborRate]);
+
+  const tabs = [
+    { id: 'daily',    label: 'Daily',    icon: icons.daily    },
+    { id: 'jobs',     label: 'Jobs',     icon: icons.jobs     },
+    { id: 'expenses', label: 'Expenses', icon: icons.expenses },
+    { id: 'bills',    label: 'Bills',    icon: icons.bills    },
+    { id: 'dash',     label: 'Dashboard',icon: icons.dash     },
+    { id: 'settings', label: 'Settings', icon: icons.settings },
+  ];
+
+  return (
+    <>
+      <div className="app-header">
+        <div className="header-inner">
+          <div className="header-logo-wrap">
+            {/* compass rose + spray icon */}
+            <svg viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="13" cy="6" r="2.5" fill="#d4a017"/>
+              <polygon points="13,3 14.2,5.5 13,5 11.8,5.5" fill="#d4a017"/>
+              <polygon points="13,9 14.2,6.5 13,7 11.8,6.5" fill="#d4a017"/>
+              <polygon points="10,6 12.5,4.8 12,6 12.5,7.2" fill="#d4a017"/>
+              <polygon points="16,6 13.5,4.8 14,6 13.5,7.2" fill="#d4a017"/>
+              {/* spray gun body */}
+              <rect x="4" y="14" width="9" height="3.5" rx="1" fill="white"/>
+              <polygon points="4,14 4,20 6,20 6,17.5" fill="white"/>
+              <rect x="12.5" y="15" width="4" height="1.5" rx=".75" fill="white"/>
+              {/* water spray */}
+              <path d="M16.5 14.5 Q19 12 21 10.5" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M16.5 15.5 Q20 14.5 22.5 13" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+              <path d="M16.5 16.5 Q19.5 17 21.5 17.5" stroke="#5ba8c9" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <div className="header-text">
+            <h1>CHESAPEAKE <span>PRO WASH</span></h1>
+            <p>Professional · Reliable · Remarkably Clean</p>
+          </div>
+        </div>
+        <div className="header-gold-bar" />
+      </div>
+      <div className="content">
+        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
+        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} />}
+        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
+        {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
+        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} />}
+      </div>
+      <div className="bottom-nav">
+        {tabs.map(t => (
+          <button key={t.id} className={`nav-btn ${tab===t.id?'active':''}`} onClick={() => setTab(t.id)}>
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
