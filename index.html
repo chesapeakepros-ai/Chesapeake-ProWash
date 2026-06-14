@@ -17,6 +17,7 @@
     appId: "1:99330916879:web:d7e900943291f11323d97a"
   });
   const auth = firebase.auth();
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
   const db   = firebase.firestore();
 </script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -1865,7 +1866,7 @@ function App() {
     }, 1500);
   }, [laborRate]);
 
-  const signIn  = () => { sessionStorage.setItem('cpw_redirecting', '1'); auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()); };
+  const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(err => { if (err.code === 'auth/popup-blocked') { sessionStorage.setItem('cpw_redirecting', '1'); auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider()); } });
   const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
   const handleSkip = () => { setSkipAuth(true); LS.set('cpw_skipAuth', true); };
 
