@@ -1747,25 +1747,32 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const syncTimer                 = useRef(null);
-  const loadedFromCloud           = useRef(false);
+  const receivingFromCloud        = useRef(false);
+  const snapshotUnsub             = useRef(null);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
-  const loadFromCloud = (uid) => {
-    userDoc(uid).get().then(doc => {
+  const subscribeToCloud = (uid) => {
+    // Unsubscribe any previous listener
+    if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
+    snapshotUnsub.current = userDoc(uid).onSnapshot(doc => {
       if (doc.exists) {
+        receivingFromCloud.current = true;
         const d = doc.data();
         if (d.entries)                setEntries(d.entries);
         if (d.jobs)                   setJobs(d.jobs);
         if (d.expenses)               setExpenseItems(d.expenses);
         if (d.bills)                  setBills(d.bills);
         if (d.laborRate !== undefined) setLaborRate(d.laborRate);
+        // Allow save effects to run again after React re-renders
+        setTimeout(() => { receivingFromCloud.current = false; }, 200);
       } else {
+        // First time — seed from localStorage
         userDoc(uid).set({
-          entries: LS.get('cpw_entries', []),
-          jobs:    LS.get('cpw_jobs', []),
-          expenses: LS.get('cpw_expenses', []),
-          bills:   LS.get('cpw_bills', []),
+          entries:   LS.get('cpw_entries', []),
+          jobs:      LS.get('cpw_jobs', []),
+          expenses:  LS.get('cpw_expenses', []),
+          bills:     LS.get('cpw_bills', []),
           laborRate: LS.get('cpw_laborRate', 30),
         });
       }
@@ -1776,16 +1783,17 @@ function App() {
     const unsub = auth.onAuthStateChanged(u => {
       setUser(u);
       setAuthReady(true);
-      if (u && !loadedFromCloud.current) {
-        loadedFromCloud.current = true;
-        loadFromCloud(u.uid);
+      if (u) {
+        subscribeToCloud(u.uid);
+      } else {
+        if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
       }
-      if (!u) loadedFromCloud.current = false;
     });
-    return unsub;
+    return () => { unsub(); if (snapshotUnsub.current) snapshotUnsub.current(); };
   }, []);
 
   const saveToCloud = (uid, data) => {
+    if (receivingFromCloud.current) return;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
@@ -1802,7 +1810,7 @@ function App() {
   useEffect(() => { LS.set('cpw_laborRate', laborRate);    if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [laborRate]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-  const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
+  const signOut = () => { auth.signOut(); if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; } };
 
   const tabs = [
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
