@@ -1761,11 +1761,17 @@ function App() {
   const syncTimer               = useRef(null);
   const loadedFromCloud         = useRef(false);
 
+  // Handle redirect result first (comes back after Google sign-in redirect)
+  useEffect(() => {
+    auth.getRedirectResult().catch(() => {});
+  }, []);
+
   // Listen for auth state changes
   useEffect(() => {
     return auth.onAuthStateChanged(u => {
       setUser(u);
       setAuthReady(true);
+      if (u) { setSkipAuth(false); LS.set('cpw_skipAuth', false); }
       if (u && !loadedFromCloud.current) {
         loadedFromCloud.current = true;
         db.collection('users').doc(u.uid).collection('data').doc('main').get().then(doc => {
@@ -1777,7 +1783,6 @@ function App() {
             if (d.bills)                 setBills(d.bills);
             if (d.laborRate !== undefined) setLaborRate(d.laborRate);
           } else {
-            // First sign-in — upload whatever is in localStorage
             const local = {
               entries: LS.get('cpw_entries', []),
               jobs:    LS.get('cpw_jobs', []),
@@ -1858,7 +1863,7 @@ function App() {
     }, 1500);
   }, [laborRate]);
 
-  const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  const signIn  = () => auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
   const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
   const handleSkip = () => { setSkipAuth(true); LS.set('cpw_skipAuth', true); };
 
