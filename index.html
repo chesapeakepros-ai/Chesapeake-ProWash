@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>Chesapeake Pro Wash — Profitability Tracker</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
   firebase.initializeApp({
@@ -15,7 +16,8 @@
     messagingSenderId: "99330916879",
     appId: "1:99330916879:web:d7e900943291f11323d97a"
   });
-  const db = firebase.firestore();
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
 </script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -450,6 +452,11 @@
   .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
   .sync-dot.syncing { background: var(--gold2); animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .btn-google { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #ddd; border-radius: 10px; padding: 12px 20px; font-size: 15px; font-weight: 600; color: #333; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+  .btn-google:hover { box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+  @media (prefers-color-scheme: dark) {
+    .btn-google { background: #1a2d4a; border-color: var(--border); color: #e8edf5; }
+  }
 
   /* ── Desktop layout (≥ 768px) ── */
   @media (min-width: 768px) {
@@ -1298,7 +1305,7 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, syncCode, connectSyncCode }) {
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, user, signIn, signOut }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
 
@@ -1354,21 +1361,28 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, syn
   return (
     <div>
       <div className="card">
-        <div className="card-title">Device Sync</div>
-        <div className="setting-row">
-          <div className="setting-label">Your Sync Code</div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>Open the app on your other device, go to Settings, and enter this code to sync your data.</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
-            <div style={{ flex: 1, background: 'var(--navy2)', border: '2px solid var(--gold)', borderRadius: 10, padding: '10px 14px', fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: 'var(--gold2)', letterSpacing: 3, textAlign: 'center' }}>{syncCode}</div>
-            <button className="btn btn-edit" style={{ padding: '10px 14px', width: 'auto', marginTop: 0 }} onClick={() => navigator.clipboard && navigator.clipboard.writeText(syncCode)}>Copy</button>
+        <div className="card-title">Google Sync</div>
+        {user ? (
+          <div className="setting-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              {user.photoURL && <img src={user.photoURL} style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid var(--gold)' }} />}
+              <div>
+                <div className="setting-label">{user.displayName}</div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>{user.email}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>✅ Your data syncs automatically across all devices.</div>
+            <button className="btn btn-edit btn" style={{ width: '100%' }} onClick={signOut}>Sign Out</button>
           </div>
-          <div className="setting-label" style={{ marginBottom: 6 }}>Connect to Another Device</div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>Paste the Sync Code from your other device here to pull its data.</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input id="syncCodeInput" type="text" placeholder="XXXX-XXXX" style={{ flex: 1, textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: 2 }} />
-            <button className="btn btn-primary" style={{ width: 'auto', padding: '0 16px', marginTop: 0 }} onClick={() => { const v = document.getElementById('syncCodeInput').value; if (v) connectSyncCode(v); }}>Connect</button>
+        ) : (
+          <div className="setting-row">
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>Sign in with Google to sync your data between your phone and computer automatically.</div>
+            <button className="btn-google" style={{ width: '100%', justifyContent: 'center' }} onClick={signIn}>
+              <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Sign in with Google
+            </button>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="card">
@@ -1728,27 +1742,17 @@ function App() {
   const [bills, setBills]           = useState(() => LS.get('cpw_bills', []));
   const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
 
-  // Sync code — unique ID shared between devices to sync data
-  const [syncCode, setSyncCode]   = useState(() => LS.get('cpw_syncCode', null));
+  // Auth + sync state
+  const [user, setUser]           = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [syncing, setSyncing]     = useState(false);
-  const [syncStatus, setSyncStatus] = useState('');
   const syncTimer                 = useRef(null);
   const loadedFromCloud           = useRef(false);
 
-  // Generate a sync code if none exists
-  useEffect(() => {
-    if (!syncCode) {
-      const code = Math.random().toString(36).slice(2,6).toUpperCase() + '-' + Math.random().toString(36).slice(2,6).toUpperCase();
-      setSyncCode(code);
-      LS.set('cpw_syncCode', code);
-    }
-  }, []);
+  const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
-  // Load from Firestore when syncCode is first set
-  useEffect(() => {
-    if (!syncCode || loadedFromCloud.current) return;
-    loadedFromCloud.current = true;
-    db.collection('cpw_sync').doc(syncCode).get().then(doc => {
+  const loadFromCloud = (uid) => {
+    userDoc(uid).get().then(doc => {
       if (doc.exists) {
         const d = doc.data();
         if (d.entries)                setEntries(d.entries);
@@ -1756,45 +1760,49 @@ function App() {
         if (d.expenses)               setExpenseItems(d.expenses);
         if (d.bills)                  setBills(d.bills);
         if (d.laborRate !== undefined) setLaborRate(d.laborRate);
-        setSyncStatus('synced');
       } else {
-        // First time — push local data up
-        syncToCloud(syncCode);
+        userDoc(uid).set({
+          entries: LS.get('cpw_entries', []),
+          jobs:    LS.get('cpw_jobs', []),
+          expenses: LS.get('cpw_expenses', []),
+          bills:   LS.get('cpw_bills', []),
+          laborRate: LS.get('cpw_laborRate', 30),
+        });
       }
-    }).catch(() => setSyncStatus('offline'));
-  }, [syncCode]);
-
-  const syncToCloud = (code) => {
-    if (!code) return;
-    setSyncing(true);
-    db.collection('cpw_sync').doc(code)
-      .set({ entries, jobs, expenses: expenseItems, bills, laborRate })
-      .then(() => { setSyncing(false); setSyncStatus('synced'); })
-      .catch(() => { setSyncing(false); setSyncStatus('offline'); });
+    });
   };
 
-  // Debounced sync on any data change
-  const triggerSync = () => {
-    if (!syncCode) return;
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged(u => {
+      setUser(u);
+      setAuthReady(true);
+      if (u && !loadedFromCloud.current) {
+        loadedFromCloud.current = true;
+        loadFromCloud(u.uid);
+      }
+      if (!u) loadedFromCloud.current = false;
+    });
+    return unsub;
+  }, []);
+
+  const saveToCloud = (uid, data) => {
     clearTimeout(syncTimer.current);
     setSyncing(true);
-    syncTimer.current = setTimeout(() => syncToCloud(syncCode), 1500);
+    syncTimer.current = setTimeout(() => {
+      userDoc(uid).set(data)
+        .then(() => setSyncing(false))
+        .catch(() => setSyncing(false));
+    }, 1500);
   };
 
-  useEffect(() => { LS.set('cpw_entries',   entries);      triggerSync(); }, [entries]);
-  useEffect(() => { LS.set('cpw_jobs',      jobs);         triggerSync(); }, [jobs]);
-  useEffect(() => { LS.set('cpw_expenses',  expenseItems); triggerSync(); }, [expenseItems]);
-  useEffect(() => { LS.set('cpw_bills',     bills);        triggerSync(); }, [bills]);
-  useEffect(() => { LS.set('cpw_laborRate', laborRate);    triggerSync(); }, [laborRate]);
+  useEffect(() => { LS.set('cpw_entries',   entries);      if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [entries]);
+  useEffect(() => { LS.set('cpw_jobs',      jobs);         if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [jobs]);
+  useEffect(() => { LS.set('cpw_expenses',  expenseItems); if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [expenseItems]);
+  useEffect(() => { LS.set('cpw_bills',     bills);        if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [bills]);
+  useEffect(() => { LS.set('cpw_laborRate', laborRate);    if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [laborRate]);
 
-  // Connect to a different sync code (enter code from another device)
-  const connectSyncCode = (newCode) => {
-    const code = newCode.trim().toUpperCase();
-    if (!code) return;
-    loadedFromCloud.current = false;
-    setSyncCode(code);
-    LS.set('cpw_syncCode', code);
-  };
+  const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  const signOut = () => { auth.signOut(); loadedFromCloud.current = false; };
 
   const tabs = [
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
@@ -1835,11 +1843,19 @@ function App() {
         <div className="header-gold-bar" />
       </div>
 
-      {/* Sync status bar */}
-      <div className="sync-bar">
-        <div className="sync-dot" style={{ background: syncing ? 'var(--gold2)' : syncStatus === 'offline' ? '#f87171' : '#4ade80' }} />
-        {syncing ? 'Saving…' : syncStatus === 'offline' ? 'Offline — data saved locally' : 'Synced'}
-      </div>
+      {/* Auth / sync bar */}
+      {user ? (
+        <div className="sync-bar">
+          {user.photoURL && <img src={user.photoURL} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--gold)' }} />}
+          <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{user.displayName}</span>
+          <div className="sync-dot" style={{ background: syncing ? 'var(--gold2)' : '#4ade80' }} />
+          <span>{syncing ? 'Saving…' : 'Synced'}</span>
+        </div>
+      ) : authReady && (
+        <div className="sync-bar" style={{ cursor: 'pointer' }} onClick={signIn}>
+          <span>☁️ Tap to sign in and sync across devices</span>
+        </div>
+      )}
 
       <div className="content">
         {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
@@ -1847,7 +1863,7 @@ function App() {
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} syncCode={syncCode} connectSyncCode={connectSyncCode} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} user={user} signIn={signIn} signOut={signOut} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
