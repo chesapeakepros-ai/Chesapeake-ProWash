@@ -1798,23 +1798,29 @@ function App() {
     return () => { unsub(); if (snapshotUnsub.current) snapshotUnsub.current(); };
   }, []);
 
-  const saveToCloud = (uid, data) => {
-    // Skip if this data matches what we just received from cloud (avoids echo loop)
+  // Single unified effect — watches all state, always has fresh values, no stale closures
+  useEffect(() => {
+    LS.set('cpw_entries',   entries);
+    LS.set('cpw_jobs',      jobs);
+    LS.set('cpw_expenses',  expenseItems);
+    LS.set('cpw_bills',     bills);
+    LS.set('cpw_laborRate', laborRate);
+
+    if (!user) return;
+
+    const data = { entries, jobs, expenses: expenseItems, bills, laborRate };
+    // Skip if identical to what we just received from cloud (prevents echo loop)
     if (JSON.stringify(data) === lastCloudJSON.current) return;
+
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
-      userDoc(uid).set(data)
+      lastCloudJSON.current = JSON.stringify(data);
+      userDoc(user.uid).set(data)
         .then(() => setSyncing(false))
         .catch(() => setSyncing(false));
     }, 1500);
-  };
-
-  useEffect(() => { LS.set('cpw_entries',   entries);      if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [entries]);
-  useEffect(() => { LS.set('cpw_jobs',      jobs);         if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [jobs]);
-  useEffect(() => { LS.set('cpw_expenses',  expenseItems); if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [expenseItems]);
-  useEffect(() => { LS.set('cpw_bills',     bills);        if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [bills]);
-  useEffect(() => { LS.set('cpw_laborRate', laborRate);    if (user) saveToCloud(user.uid, { entries, jobs, expenses: expenseItems, bills, laborRate }); }, [laborRate]);
+  }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   const signOut = () => { auth.signOut(); if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; } };
