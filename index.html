@@ -1747,7 +1747,6 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [syncing, setSyncing]     = useState(false);
   const syncTimer                 = useRef(null);
-  const cloudWriteTime            = useRef(0);
   const snapshotUnsub             = useRef(null);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
@@ -1755,11 +1754,11 @@ function App() {
   const subscribeToCloud = (uid) => {
     // Unsubscribe any previous listener
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
-    snapshotUnsub.current = userDoc(uid).onSnapshot(doc => {
-      if (doc.exists) {
-        // Record when we last received from cloud; block saves for 3s after
-        cloudWriteTime.current = Date.now();
-        const d = doc.data();
+    snapshotUnsub.current = userDoc(uid).onSnapshot({ includeMetadataChanges: true }, snapshot => {
+      // hasPendingWrites = true means THIS device wrote it — skip to avoid overwriting ourselves
+      if (snapshot.metadata.hasPendingWrites) return;
+      if (snapshot.exists) {
+        const d = snapshot.data();
         if (d.entries)                setEntries(d.entries);
         if (d.jobs)                   setJobs(d.jobs);
         if (d.expenses)               setExpenseItems(d.expenses);
@@ -1792,7 +1791,6 @@ function App() {
   }, []);
 
   const saveToCloud = (uid, data) => {
-    if (Date.now() - cloudWriteTime.current < 3000) return;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
