@@ -1748,7 +1748,7 @@ function App() {
   const [syncing, setSyncing]     = useState(false);
   const syncTimer                 = useRef(null);
   const snapshotUnsub             = useRef(null);
-  const blockSaveCount            = useRef(0);
+  const lastCloudJSON             = useRef('');
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -1757,27 +1757,30 @@ function App() {
     snapshotUnsub.current = userDoc(uid).onSnapshot(snapshot => {
       if (snapshot.exists) {
         const d = snapshot.data();
-        // Count how many state updates we're about to make so save effects can skip them
-        let count = 0;
-        if (d.entries)                count++;
-        if (d.jobs)                   count++;
-        if (d.expenses)               count++;
-        if (d.bills)                  count++;
-        if (d.laborRate !== undefined) count++;
-        blockSaveCount.current += count;
-        if (d.entries)                setEntries(d.entries);
-        if (d.jobs)                   setJobs(d.jobs);
-        if (d.expenses)               setExpenseItems(d.expenses);
-        if (d.bills)                  setBills(d.bills);
-        if (d.laborRate !== undefined) setLaborRate(d.laborRate);
+        const incoming = {
+          entries:   d.entries   || [],
+          jobs:      d.jobs      || [],
+          expenses:  d.expenses  || [],
+          bills:     d.bills     || [],
+          laborRate: d.laborRate ?? 30,
+        };
+        // Store what we just received — save effects will see their data matches and skip
+        lastCloudJSON.current = JSON.stringify(incoming);
+        setEntries(incoming.entries);
+        setJobs(incoming.jobs);
+        setExpenseItems(incoming.expenses);
+        setBills(incoming.bills);
+        setLaborRate(incoming.laborRate);
       } else {
-        userDoc(uid).set({
-          entries:   LS.get('cpw_entries', []),
-          jobs:      LS.get('cpw_jobs', []),
-          expenses:  LS.get('cpw_expenses', []),
-          bills:     LS.get('cpw_bills', []),
+        const seed = {
+          entries:   LS.get('cpw_entries',   []),
+          jobs:      LS.get('cpw_jobs',      []),
+          expenses:  LS.get('cpw_expenses',  []),
+          bills:     LS.get('cpw_bills',     []),
           laborRate: LS.get('cpw_laborRate', 30),
-        });
+        };
+        lastCloudJSON.current = JSON.stringify(seed);
+        userDoc(uid).set(seed);
       }
     });
   };
@@ -1796,7 +1799,8 @@ function App() {
   }, []);
 
   const saveToCloud = (uid, data) => {
-    if (blockSaveCount.current > 0) { blockSaveCount.current--; return; }
+    // Skip if this data matches what we just received from cloud (avoids echo loop)
+    if (JSON.stringify(data) === lastCloudJSON.current) return;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
