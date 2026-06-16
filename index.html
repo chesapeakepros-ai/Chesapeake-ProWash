@@ -581,7 +581,11 @@ const fmt$ = v => {
 };
 const fmtPct = v => (Number(v) || 0).toFixed(1) + '%';
 const fmtHrs = v => { const n = Number(v) || 0; return n % 1 === 0 ? n + 'h' : n.toFixed(2) + 'h'; };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  // Use Eastern Time (Annapolis, MD) — avoids UTC date flipping in the evening
+  const et = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  return et; // returns YYYY-MM-DD in ET
+};
 const fmtDate = d => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; };
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -1098,14 +1102,17 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
 
   const now = new Date();
   const todayStr = today();
-  const dow = now.getDay();
-  const diffToMon = (dow === 0 ? -6 : 1 - dow);
-  const weekStart = new Date(now); weekStart.setDate(now.getDate() + diffToMon);
+  // Parse today's ET date parts to avoid any UTC offset issues in week math
+  const [tyear, tmonth, tday] = todayStr.split('-').map(Number);
+  const nowET = new Date(tyear, tmonth - 1, tday);
+  const dow = nowET.getDay(); // 0=Sunday
+  // Week is Sunday–Saturday
+  const weekStart = new Date(nowET); weekStart.setDate(nowET.getDate() - dow);
   const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-  const toStr = d => d.toISOString().slice(0, 10);
+  const toStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const weekStartStr = toStr(weekStart);
   const weekEndStr   = toStr(weekEnd);
-  const monthStart   = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const monthStart   = `${tyear}-${String(tmonth).padStart(2,'0')}-01`;
 
   const filterEntries = (start, end) => entries.filter(e => e.date >= start && e.date <= end);
 
@@ -1133,7 +1140,7 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
   const last14 = useMemo(() => {
     const days = [];
     for (let i = 13; i >= 0; i--) {
-      const d = new Date(now); d.setDate(now.getDate() - i);
+      const d = new Date(nowET); d.setDate(nowET.getDate() - i);
       days.push(toStr(d));
     }
     return days.map(d => {
@@ -1146,11 +1153,12 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
   const last8weeks = useMemo(() => {
     const weeks = [];
     for (let i = 7; i >= 0; i--) {
-      const wMon = new Date(weekStart); wMon.setDate(weekStart.getDate() - i * 7);
-      const wSun = new Date(wMon); wSun.setDate(wMon.getDate() + 6);
-      const es = filterEntries(toStr(wMon), toStr(wSun));
+      // Each week starts on Sunday
+      const wSun = new Date(weekStart); wSun.setDate(weekStart.getDate() - i * 7);
+      const wSat = new Date(wSun); wSat.setDate(wSun.getDate() + 6);
+      const es = filterEntries(toStr(wSun), toStr(wSat));
       const r = rollup(es);
-      weeks.push({ label: `${String(wMon.getMonth()+1)}/${String(wMon.getDate())}`, ...r });
+      weeks.push({ label: `${String(wSun.getMonth()+1)}/${String(wSun.getDate())}`, ...r });
     }
     return weeks;
   }, [entries, jobs, laborRate]);
