@@ -583,8 +583,15 @@ const fmtPct = v => (Number(v) || 0).toFixed(1) + '%';
 const fmtHrs = v => { const n = Number(v) || 0; return n % 1 === 0 ? n + 'h' : n.toFixed(2) + 'h'; };
 const today = () => {
   // Eastern Time (Annapolis, MD) — avoids UTC date flipping in the evening
-  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  try {
+    const parts = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(new Date()).forEach(({ type, value }) => { parts[type] = value; });
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  } catch(e) {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
 };
 const fmtDate = d => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; };
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
