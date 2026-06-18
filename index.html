@@ -1763,6 +1763,7 @@ function App() {
   const syncTimer                 = useRef(null);
   const snapshotUnsub             = useRef(null);
   const lastCloudJSON             = useRef('');
+  const cloudReady                = useRef(false);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -1780,6 +1781,7 @@ function App() {
         };
         // Store what we just received — save effects will see their data matches and skip
         lastCloudJSON.current = JSON.stringify(incoming);
+        cloudReady.current = true;
         setEntries(incoming.entries);
         setJobs(incoming.jobs);
         setExpenseItems(incoming.expenses);
@@ -1794,6 +1796,7 @@ function App() {
           laborRate: LS.get('cpw_laborRate', 30),
         };
         lastCloudJSON.current = JSON.stringify(seed);
+        cloudReady.current = true;
         userDoc(uid).set(seed);
       }
     });
@@ -1821,6 +1824,7 @@ function App() {
     LS.set('cpw_laborRate', laborRate);
 
     if (!user) return;
+    if (!cloudReady.current) return; // Wait for first snapshot before saving
 
     const data = { entries, jobs, expenses: expenseItems, bills, laborRate };
     // Skip if identical to what we just received from cloud (prevents echo loop)
@@ -1837,7 +1841,7 @@ function App() {
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-  const signOut = () => { auth.signOut(); if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; } };
+  const signOut = () => { auth.signOut(); cloudReady.current = false; if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; } };
 
   const tabs = [
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
