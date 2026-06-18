@@ -1140,10 +1140,17 @@ function BarChart({ labels, datasets, key: _ }) {
       data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: '#2d3748' } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            }
+          }
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, callback: v => '$' + v.toLocaleString() } }
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#4a5568' } },
+          y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 11 }, color: '#4a5568', callback: v => '$' + v.toLocaleString() } }
         },
       }
     });
@@ -1163,12 +1170,19 @@ function LineChart({ labels, datasets }) {
       data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, padding: 10 } } },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#f0f4f8' }, ticks: { font: { size: 10 }, callback: v => '$' + v.toLocaleString() } }
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: '#2d3748' } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            }
+          }
         },
-        elements: { point: { radius: 3 }, line: { tension: 0.3 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#4a5568' } },
+          y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 11 }, color: '#4a5568', callback: v => '$' + v.toLocaleString() } }
+        },
+        elements: { point: { radius: 4, hoverRadius: 6 }, line: { tension: 0.35, borderWidth: 2.5 } },
       }
     });
     return () => chartRef.current?.destroy();
@@ -1176,8 +1190,37 @@ function LineChart({ labels, datasets }) {
   return <canvas ref={ref} />;
 }
 
+function PieChart({ labels, data, colors }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(ref.current, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 12, color: '#2d3748' } },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + ctx.label + ': $' + (ctx.parsed || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            }
+          }
+        },
+        cutout: '55%',
+      }
+    });
+    return () => chartRef.current?.destroy();
+  }, [labels, data, colors]);
+  return <canvas ref={ref} />;
+}
+
 // ─── Dashboard ──────────────────────────────────────────────────
 function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
+  const reviewedJobs = jobs.filter(j => j.googleReview);
+  const reviewPct    = jobs.length > 0 ? Math.round((reviewedJobs.length / jobs.length) * 100) : 0;
   const [period, setPeriod] = useState('week');
   const [chartMode, setChartMode] = useState('day');
 
@@ -1265,6 +1308,11 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
           <div className="stat-sub">{statsLabel}</div>
         </div>
         <div className="stat-card">
+          <div className="stat-label">Expenses</div>
+          <div className="stat-value red">{fmt$(statsToShow.expenses)}</div>
+          <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.expenses/statsToShow.revenue*100) + ' of revenue' : statsLabel}</div>
+        </div>
+        <div className="stat-card">
           <div className="stat-label">Net Profit</div>
           <div className={`stat-value ${statsToShow.profit >= 0 ? 'green' : 'red'}`}>{fmt$(statsToShow.profit)}</div>
           <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.profit/statsToShow.revenue*100) + ' margin' : '–'}</div>
@@ -1278,6 +1326,11 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
           <div className="stat-label">Travel Hours</div>
           <div className="stat-value orange">{fmtHrs(statsToShow.travel)}</div>
           <div className="stat-sub">of {fmtHrs(statsToShow.hours)} total</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Google Reviews</div>
+          <div className="stat-value" style={{ color: '#f59e0b' }}>{reviewedJobs.length} ⭐</div>
+          <div className="stat-sub">{jobs.length > 0 ? `${reviewPct}% of ${jobs.length} jobs` : 'No jobs yet'}</div>
         </div>
       </div>
 
@@ -1353,11 +1406,55 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
             key={'profit' + entries.length + jobs.length}
             labels={last14.map(d => d.label)}
             datasets={[
-              { label: 'Profit', data: last14.map(d => d.profit), borderColor: '#38a169', backgroundColor: '#38a16920', fill: true, borderWidth: 2 },
+              { label: 'Profit', data: last14.map(d => d.profit), borderColor: '#38a169', backgroundColor: '#38a16930', fill: true },
+              { label: 'Revenue', data: last14.map(d => d.revenue), borderColor: '#3182ce', backgroundColor: 'transparent', borderDash: [5,3] },
             ]}
           />
         </div>
       </div>
+
+      {/* Expense Breakdown Pie */}
+      {(() => {
+        const cats = {};
+        (expenseItems || []).forEach(e => {
+          const cat = e.category || 'Misc';
+          cats[cat] = (cats[cat] || 0) + (Number(e.amount) || 0);
+        });
+        // Also include job expenses
+        (jobs || []).forEach(j => {
+          (j.expenses || []).forEach(e => {
+            cats['Job Expenses'] = (cats['Job Expenses'] || 0) + (Number(e.amount) || 0);
+          });
+        });
+        const pieLabels = Object.keys(cats);
+        const pieData   = Object.values(cats);
+        const pieColors = ['#3182ce','#e53e3e','#d69e2e','#38a169','#805ad5','#dd6b20','#2b6cb0','#c53030'];
+        if (pieLabels.length === 0) return null;
+        return (
+          <div className="card">
+            <div className="card-title">Expense Breakdown</div>
+            <div className="chart-wrap" style={{ height: 280 }}>
+              <PieChart labels={pieLabels} data={pieData} colors={pieColors.slice(0, pieLabels.length)} />
+            </div>
+            <div style={{ marginTop: 10 }}>
+              {pieLabels.map((cat, i) => (
+                <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 3, background: pieColors[i] || '#718096', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{cat}</span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>{fmt$(pieData[i])}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>
+                      {pieData.reduce((a,b)=>a+b,0) > 0 ? fmtPct(pieData[i]/pieData.reduce((a,b)=>a+b,0)*100) : ''}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {jobsSorted.length > 0 && (
         <div className="card">
