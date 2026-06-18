@@ -637,11 +637,12 @@ function calcEntry(entry, jobs, laborRate, expenseItems) {
 }
 
 function calcJob(j, laborRate) {
-  const labor   = (Number(j.manHours) || 0) * (Number(laborRate) || 30);
-  const revenue = Number(j.revenue) || 0;
-  const profit  = revenue - labor;
-  const margin  = revenue > 0 ? (profit / revenue) * 100 : 0;
-  return { labor, profit, margin };
+  const labor    = (Number(j.manHours) || 0) * (Number(laborRate) || 30);
+  const revenue  = Number(j.revenue) || 0;
+  const jobExps  = (j.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const profit   = revenue - labor - jobExps;
+  const margin   = revenue > 0 ? (profit / revenue) * 100 : 0;
+  return { labor, jobExps, profit, margin };
 }
 
 // ─── Icons ─────────────────────────────────────────────────────
@@ -891,20 +892,30 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress' };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [] };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editJob, setEditJob]   = useState(null);
-  const [form, setForm]         = useState(EMPTY_JOB);
-  const [sortKey, setSortKey]   = useState('dateStart');
-  const [sortDir, setSortDir]   = useState(-1);
+  const [showForm, setShowForm]   = useState(false);
+  const [editJob, setEditJob]     = useState(null);
+  const [form, setForm]           = useState(EMPTY_JOB);
+  const [sortKey, setSortKey]     = useState('dateStart');
+  const [sortDir, setSortDir]     = useState(-1);
+  const [expDesc, setExpDesc]     = useState('');
+  const [expAmt, setExpAmt]       = useState('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
   const calc = useMemo(() => calcJob(form, laborRate), [form, laborRate]);
 
-  const openNew  = () => { setEditJob(null); setForm(EMPTY_JOB); setShowForm(true); };
-  const openEdit = j  => { setEditJob(j);    setForm(j);         setShowForm(true); };
+  const openNew  = () => { setEditJob(null); setForm(EMPTY_JOB); setExpDesc(''); setExpAmt(''); setShowForm(true); };
+  const openEdit = j  => { setEditJob(j); setForm({ ...EMPTY_JOB, ...j, expenses: j.expenses || [] }); setExpDesc(''); setExpAmt(''); setShowForm(true); };
+
+  const addJobExpense = () => {
+    if (!expDesc.trim() || !expAmt) return;
+    const exp = { id: uid(), description: expDesc.trim(), amount: expAmt };
+    setForm(f => ({ ...f, expenses: [...(f.expenses || []), exp] }));
+    setExpDesc(''); setExpAmt('');
+  };
+  const removeJobExpense = id => setForm(f => ({ ...f, expenses: (f.expenses || []).filter(e => e.id !== id) }));
 
   // Ensure a minimal daily entry exists for a given date
   const ensureDailyEntry = (date) => {
@@ -989,8 +1000,39 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
             </div>
           </div>
 
+          {/* Job Expenses */}
+          <div style={{ marginTop: 12, marginBottom: 4 }}>
+            <div className="card-title" style={{ fontSize: 13, marginBottom: 6 }}>Job Expenses</div>
+            {(form.expenses || []).map(e => (
+              <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 13 }}>{e.description}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, color: 'var(--red)' }}>−{fmt$(e.amount)}</span>
+                  <button className="btn btn-sm btn-danger" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => removeJobExpense(e.id)}>✕</button>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <input
+                placeholder="Description (e.g. chemicals)"
+                value={expDesc}
+                onChange={e => setExpDesc(e.target.value)}
+                style={{ flex: 2, fontSize: 13 }}
+              />
+              <input
+                type="number" inputMode="decimal" placeholder="Amount"
+                value={expAmt}
+                onChange={e => setExpAmt(e.target.value)}
+                style={{ flex: 1, fontSize: 13 }}
+                min="0" step="0.01"
+              />
+              <button className="btn btn-sm btn-primary" onClick={addJobExpense}>Add</button>
+            </div>
+          </div>
+
           <div className="calc-box">
             <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
+            {calc.jobExps > 0 && <div className="calc-row"><span className="calc-label">Job Expenses</span><span className="calc-value red">−{fmt$(calc.jobExps)}</span></div>}
             <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
             <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
           </div>
@@ -1033,7 +1075,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                   </div>
                   <div>
                     <div className="job-num">{fmt$(job.revenue)}</div>
-                    <div className="job-sub">{fmtHrs(job.manHours)}</div>
+                    <div className="job-sub">{fmtHrs(job.manHours)}{(job.expenses||[]).length > 0 ? ` · ${(job.expenses||[]).length} exp` : ''}</div>
                   </div>
                   <div>
                     <div className={`job-num ${c.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(c.margin)}</div>
