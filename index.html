@@ -892,7 +892,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [] };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
   const [showForm, setShowForm]   = useState(false);
@@ -989,7 +989,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
               <label>Man Hours</label>
               <input type="number" inputMode="decimal" name="manHours" value={form.manHours} onChange={handleChange} placeholder="0.0" step="0.25" min="0" />
             </div>
-            <div className="form-group span2">
+            <div className="form-group">
               <label>Status</label>
               <select name="status" value={form.status} onChange={handleChange}>
                 <option>In Progress</option>
@@ -997,6 +997,22 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                 <option>Scheduled</option>
                 <option>Cancelled</option>
               </select>
+            </div>
+            <div className="form-group" style={{ justifyContent: 'flex-end' }}>
+              <label>Google Review</label>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, googleReview: !f.googleReview }))}
+                style={{
+                  background: form.googleReview ? '#22c55e' : 'var(--border)',
+                  color: form.googleReview ? '#fff' : 'var(--navy2)',
+                  border: 'none', borderRadius: 8, padding: '8px 14px',
+                  fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {form.googleReview ? '⭐ Reviewed' : '○ No Review'}
+              </button>
             </div>
           </div>
 
@@ -1083,7 +1099,12 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                   <div>
                     <div className="job-name">{job.client}</div>
                     <div className="job-date">{job.description} · {fmtDate(job.dateStart)}</div>
-                    <span className={`badge ${statusColor}`} style={{ marginTop: 3, display: 'inline-block' }}>{job.status}</span>
+                    <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                      <span className={`badge ${statusColor}`}>{job.status}</span>
+                      {job.googleReview
+                        ? <span className="badge badge-green">⭐ Reviewed</span>
+                        : <span className="badge badge-orange">No Review</span>}
+                    </div>
                   </div>
                   <div>
                     <div className="job-num">{fmt$(job.revenue)}</div>
