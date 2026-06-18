@@ -595,9 +595,13 @@ const today = () => {
 const fmtDate = d => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; };
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
-// Jobs that count toward a given date (matched by dateStart)
+// Jobs that count toward a given date — only Completed jobs count for revenue
 function jobsForDate(jobs, date) {
-  return jobs.filter(j => j.dateStart === date);
+  return (jobs || []).filter(j => j.dateStart === date && j.status === 'Completed');
+}
+// All jobs on a date regardless of status (for display only)
+function allJobsForDate(jobs, date) {
+  return (jobs || []).filter(j => j.dateStart === date);
 }
 
 // Expense items for a given date
@@ -730,9 +734,9 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
                   </div>
                   {jobsOnFormDate.length > 0
                     ? <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
-                        {jobsOnFormDate.length} job{jobsOnFormDate.length > 1 ? 's' : ''} on this date: {jobsOnFormDate.map(j => j.client).join(', ')}
+                        {jobsOnFormDate.length} completed job{jobsOnFormDate.length > 1 ? 's' : ''}: {jobsOnFormDate.map(j => j.client).join(', ')}
                       </span>
-                    : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No jobs logged for this date</span>
+                    : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No completed jobs on this date — mark a job Completed to count its revenue</span>
                   }
                 </div>
 
@@ -818,7 +822,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
 
       {entries.map(entry => {
         const c = calcEntry(entry, jobs, laborRate, expenseItems);
-        const matchedJobs = jobsForDate(jobs, entry.date);
+        const allDayJobs = allJobsForDate(jobs, entry.date);
         return (
           <div key={entry.id} className="card">
             <div className="list-item-header">
@@ -874,9 +878,14 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
               </div>
             )}
 
-            {matchedJobs.length > 0 && (
+            {allDayJobs.length > 0 && (
               <div className="job-pill">
-                Jobs: {matchedJobs.map(j => `${j.client} (${fmt$(j.revenue)})`).join(' · ')}
+                {allDayJobs.map(j => (
+                  <span key={j.id} style={{ marginRight: 6 }}>
+                    {j.client} ({fmt$(j.revenue)})
+                    {j.status !== 'Completed' && <span style={{ color: '#f59e0b', fontWeight: 700, marginLeft: 3 }}>· {j.status} — not counted</span>}
+                  </span>
+                ))}
               </div>
             )}
 
