@@ -1228,8 +1228,11 @@ function PieChart({ labels, data, colors }) {
 
 // ─── Dashboard ──────────────────────────────────────────────────
 function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
-  const reviewedJobs = jobs.filter(j => j.googleReview);
-  const reviewPct    = jobs.length > 0 ? Math.round((reviewedJobs.length / jobs.length) * 100) : 0;
+  const periodStart  = period === 'today' ? todayStr : period === 'week' ? weekStartStr : monthStart;
+  const periodEnd    = period === 'today' ? todayStr : period === 'week' ? weekEndStr   : todayStr;
+  const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
+  const reviewedJobs = periodJobs.filter(j => j.googleReview);
+  const reviewPct    = periodJobs.length > 0 ? Math.round((reviewedJobs.length / periodJobs.length) * 100) : 0;
   const [period, setPeriod] = useState('week');
   const [chartMode, setChartMode] = useState('day');
 
@@ -1339,7 +1342,7 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
         <div className="stat-card">
           <div className="stat-label">Google Reviews</div>
           <div className="stat-value" style={{ color: '#f59e0b' }}>{reviewedJobs.length} ⭐</div>
-          <div className="stat-sub">{jobs.length > 0 ? `${reviewPct}% of ${jobs.length} jobs` : 'No jobs yet'}</div>
+          <div className="stat-sub">{periodJobs.length > 0 ? `${reviewPct}% of ${periodJobs.length} jobs` : 'No jobs yet'}</div>
         </div>
       </div>
 
