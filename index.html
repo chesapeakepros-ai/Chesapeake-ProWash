@@ -841,7 +841,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
               <div className="hours-cell">
                 <div className="hours-cell-label">Job Hrs</div>
                 <div className="hours-cell-value">{fmtHrs(c.jobHours)}</div>
-                <div className="hours-cell-sub">{matchedJobs.length} job{matchedJobs.length !== 1 ? 's' : ''}</div>
+                <div className="hours-cell-sub">{allDayJobs.length} job{allDayJobs.length !== 1 ? 's' : ''}</div>
               </div>
               <div className="hours-cell travel">
                 <div className="hours-cell-label">Travel Hrs</div>
