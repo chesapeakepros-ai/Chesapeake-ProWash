@@ -1433,12 +1433,15 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
           const cat = e.category || 'Misc';
           cats[cat] = (cats[cat] || 0) + (Number(e.amount) || 0);
         });
-        // Also include job expenses
+        // Job-specific expenses
         (jobs || []).forEach(j => {
           (j.expenses || []).forEach(e => {
             cats['Job Expenses'] = (cats['Job Expenses'] || 0) + (Number(e.amount) || 0);
           });
         });
+        // Labor from all daily entries
+        const totalLabor = (entries || []).reduce((s, e) => s + (calcEntry(e, jobs, laborRate, expenseItems).labor || 0), 0);
+        if (totalLabor > 0) cats['Labor'] = totalLabor;
         const pieLabels = Object.keys(cats);
         const pieData   = Object.values(cats);
         const pieColors = ['#3182ce','#e53e3e','#d69e2e','#38a169','#805ad5','#dd6b20','#2b6cb0','#c53030'];
