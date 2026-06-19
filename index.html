@@ -1228,11 +1228,6 @@ function PieChart({ labels, data, colors }) {
 
 // ─── Dashboard ──────────────────────────────────────────────────
 function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
-  const periodStart  = period === 'today' ? todayStr : period === 'week' ? weekStartStr : monthStart;
-  const periodEnd    = period === 'today' ? todayStr : period === 'week' ? weekEndStr   : todayStr;
-  const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
-  const reviewedJobs = periodJobs.filter(j => j.googleReview);
-  const reviewPct    = periodJobs.length > 0 ? Math.round((reviewedJobs.length / periodJobs.length) * 100) : 0;
   const [period, setPeriod] = useState('week');
   const [chartMode, setChartMode] = useState('day');
 
@@ -1268,6 +1263,12 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
   const monthStats = rollup(filterEntries(monthStart, todayStr));
   const statsToShow = period === 'today' ? todayStats : period === 'week' ? weekStats : monthStats;
   const statsLabel  = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
+
+  const periodStart  = period === 'today' ? todayStr : period === 'week' ? weekStartStr : monthStart;
+  const periodEnd    = period === 'today' ? todayStr : period === 'week' ? weekEndStr   : todayStr;
+  const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
+  const reviewedJobs = periodJobs.filter(j => j.googleReview);
+  const reviewPct    = periodJobs.length > 0 ? Math.round((reviewedJobs.length / periodJobs.length) * 100) : 0;
 
   // Monthly overhead from bills
   const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
