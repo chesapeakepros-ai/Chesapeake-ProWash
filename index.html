@@ -736,7 +736,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
                     ? <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
                         {jobsOnFormDate.length} completed job{jobsOnFormDate.length > 1 ? 's' : ''}: {jobsOnFormDate.map(j => j.client).join(', ')}
                       </span>
-                    : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No completed jobs on this date — mark a job Completed to count its revenue</span>
+                    : <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>No completed jobs on this date. Mark a job Completed to count its revenue.</span>
                   }
                 </div>
 
@@ -883,7 +883,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
                 {allDayJobs.map(j => (
                   <span key={j.id} style={{ marginRight: 6 }}>
                     {j.client} ({fmt$(j.revenue)})
-                    {j.status !== 'Completed' && <span style={{ color: '#f59e0b', fontWeight: 700, marginLeft: 3 }}>· {j.status} — not counted</span>}
+                    {j.status !== 'Completed' && <span style={{ color: '#f59e0b', fontWeight: 700, marginLeft: 3 }}>{' · ' + j.status + ' — not counted'}</span>}
                   </span>
                 ))}
               </div>
