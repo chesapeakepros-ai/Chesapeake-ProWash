@@ -1332,8 +1332,8 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
           <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.profit/statsToShow.revenue*100) + ' margin' : '–'}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Job Hours</div>
-          <div className="stat-value blue">{fmtHrs(statsToShow.jobHours)}</div>
+          <div className="stat-label">Total Hours</div>
+          <div className="stat-value blue">{fmtHrs(statsToShow.hours)}</div>
           <div className="stat-sub">{statsToShow.hours > 0 && statsToShow.revenue > 0 ? fmt$(statsToShow.revenue / statsToShow.hours) + '/hr' : '–'}</div>
         </div>
         <div className="stat-card">
