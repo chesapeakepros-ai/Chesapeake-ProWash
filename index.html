@@ -612,10 +612,11 @@ function expensesForDate(expenseItems, date) {
 // Full calc for a daily entry, incorporating jobs + expense log on the same date
 function calcEntry(entry, jobs, laborRate, expenseItems) {
   const rate = Number(laborRate) || 30;
-  const matchedJobs = jobsForDate(jobs, entry.date);
+  const completedJobs = jobsForDate(jobs, entry.date);      // completed only — for revenue
+  const allDayJobs    = allJobsForDate(jobs, entry.date);   // all jobs — for hours
 
-  const jobRevenue = matchedJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
-  const jobHours   = matchedJobs.reduce((s, j) => s + (Number(j.manHours) || 0), 0);
+  const jobRevenue = completedJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
+  const jobHours   = allDayJobs.reduce((s, j) => s + (Number(j.manHours) || 0), 0);
 
   const additionalRevenue = Number(entry.additionalRevenue ?? entry.revenue ?? 0) || 0;
   const totalRevenue = jobRevenue + additionalRevenue;
