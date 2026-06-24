@@ -622,7 +622,8 @@ function calcEntry(entry, jobs, laborRate, expenseItems) {
   const totalRevenue = jobRevenue + additionalRevenue;
 
   const enteredHours = Number(entry.manHours) || 0;
-  const totalHours  = Math.max(enteredHours, jobHours);
+  // If user manually entered hours, use that. Otherwise fall back to job hours.
+  const totalHours  = enteredHours > 0 ? enteredHours : jobHours;
   const travelHours = Math.max(0, totalHours - jobHours);
 
   const labor     = totalHours * rate;
