@@ -1953,6 +1953,7 @@ function App() {
   const snapshotUnsub             = useRef(null);
   const lastCloudJSON             = useRef('');
   const cloudReady                = useRef(false);
+  const isSaving                  = useRef(false);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -1970,8 +1971,9 @@ function App() {
           laborRate: d.laborRate ?? 30,
         };
         const incomingJSON = JSON.stringify(incoming);
-        // Only apply if this is genuinely different from what we last wrote —
-        // if it matches, it's our own write echoing back; skip to avoid overwriting local state.
+        // Skip if a local write is in progress (would overwrite unsaved changes)
+        // or if this snapshot is our own write echoing back.
+        if (isSaving.current) return;
         if (incomingJSON === lastCloudJSON.current) return;
         lastCloudJSON.current = incomingJSON;
         setEntries(incoming.entries);
@@ -2021,13 +2023,18 @@ function App() {
     const json = JSON.stringify(data);
     if (json === lastCloudJSON.current) return; // nothing changed
 
-    lastCloudJSON.current = json; // mark as sent before the async write
+    lastCloudJSON.current = json;
+    isSaving.current = true;
     setSyncing(true);
-    // JSON round-trip strips undefined values that Firestore rejects
     const clean = JSON.parse(json);
-    userDoc(user.uid).set(clean)
-      .then(() => setSyncing(false))
-      .catch(() => setSyncing(false));
+    try {
+      userDoc(user.uid).set(clean)
+        .then(() => { isSaving.current = false; setSyncing(false); })
+        .catch(() => { isSaving.current = false; setSyncing(false); });
+    } catch(e) {
+      isSaving.current = false;
+      setSyncing(false);
+    }
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
