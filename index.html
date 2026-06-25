@@ -1950,11 +1950,9 @@ function App() {
   const [user, setUser]           = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [syncing, setSyncing]     = useState(false);
-  const syncTimer                 = useRef(null);
   const snapshotUnsub             = useRef(null);
   const lastCloudJSON             = useRef('');
   const cloudReady                = useRef(false);
-  const pendingWrite              = useRef(false);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -1971,17 +1969,17 @@ function App() {
           bills:     d.bills     || [],
           laborRate: d.laborRate ?? 30,
         };
-        // If we have a local write in flight, ignore this snapshot entirely —
-        // it contains stale data and would overwrite the user's unsaved changes.
-        if (pendingWrite.current) return;
-        lastCloudJSON.current = JSON.stringify(incoming);
+        const incomingJSON = JSON.stringify(incoming);
+        // Only apply if this is genuinely different from what we last wrote —
+        // if it matches, it's our own write echoing back; skip to avoid overwriting local state.
+        if (incomingJSON === lastCloudJSON.current) return;
+        lastCloudJSON.current = incomingJSON;
         setEntries(incoming.entries);
         setJobs(incoming.jobs);
         setExpenseItems(incoming.expenses);
         setBills(incoming.bills);
         setLaborRate(incoming.laborRate);
       } else {
-        if (pendingWrite.current) return;
         const seed = {
           entries:   LS.get('cpw_entries',   []),
           jobs:      LS.get('cpw_jobs',      []),
@@ -2008,7 +2006,8 @@ function App() {
     return () => { unsub(); if (snapshotUnsub.current) snapshotUnsub.current(); };
   }, []);
 
-  // Single unified effect — watches all state, always has fresh values, no stale closures
+  // Save to localStorage always; save to Firestore immediately when data changes.
+  // No debounce timer — entries only change when the user clicks Save, not on every keystroke.
   useEffect(() => {
     LS.set('cpw_entries',   entries);
     LS.set('cpw_jobs',      jobs);
@@ -2016,28 +2015,17 @@ function App() {
     LS.set('cpw_bills',     bills);
     LS.set('cpw_laborRate', laborRate);
 
-    if (!user) return;
-    if (!cloudReady.current) return; // Wait for first snapshot before saving
+    if (!user || !cloudReady.current) return;
 
     const data = { entries, jobs, expenses: expenseItems, bills, laborRate };
     const json = JSON.stringify(data);
-    // Skip if identical to what we just received from cloud (prevents echo loop)
-    if (json === lastCloudJSON.current) {
-      setSyncing(false);
-      return;
-    }
+    if (json === lastCloudJSON.current) return; // nothing changed
 
-    // Set lastCloudJSON immediately so any snapshot arriving during the debounce
-    // window sees "new data" and skips its state update rather than overwriting
-    lastCloudJSON.current = json;
-    pendingWrite.current = true;
-    clearTimeout(syncTimer.current);
+    lastCloudJSON.current = json; // mark as sent before the async write
     setSyncing(true);
-    syncTimer.current = setTimeout(() => {
-      userDoc(user.uid).set(data)
-        .then(() => { pendingWrite.current = false; setSyncing(false); })
-        .catch(() => { pendingWrite.current = false; setSyncing(false); });
-    }, 1500);
+    userDoc(user.uid).set(data)
+      .then(() => setSyncing(false))
+      .catch(() => setSyncing(false));
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
