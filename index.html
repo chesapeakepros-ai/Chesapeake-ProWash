@@ -1954,6 +1954,7 @@ function App() {
   const snapshotUnsub             = useRef(null);
   const lastCloudJSON             = useRef('');
   const cloudReady                = useRef(false);
+  const pendingWrite              = useRef(false);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -1972,6 +1973,8 @@ function App() {
         // Store what we just received — save effects will see their data matches and skip
         lastCloudJSON.current = JSON.stringify(incoming);
         cloudReady.current = true;
+        // Don't overwrite local state if we have an unsaved local change in flight
+        if (pendingWrite.current) return;
         setEntries(incoming.entries);
         setJobs(incoming.jobs);
         setExpenseItems(incoming.expenses);
@@ -2017,16 +2020,21 @@ function App() {
     if (!cloudReady.current) return; // Wait for first snapshot before saving
 
     const data = { entries, jobs, expenses: expenseItems, bills, laborRate };
+    const json = JSON.stringify(data);
     // Skip if identical to what we just received from cloud (prevents echo loop)
-    if (JSON.stringify(data) === lastCloudJSON.current) return;
+    if (json === lastCloudJSON.current) {
+      setSyncing(false);
+      return;
+    }
 
+    pendingWrite.current = true;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
-      lastCloudJSON.current = JSON.stringify(data);
+      lastCloudJSON.current = json;
       userDoc(user.uid).set(data)
-        .then(() => setSyncing(false))
-        .catch(() => setSyncing(false));
+        .then(() => { pendingWrite.current = false; setSyncing(false); })
+        .catch(() => { pendingWrite.current = false; setSyncing(false); });
     }, 1500);
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
