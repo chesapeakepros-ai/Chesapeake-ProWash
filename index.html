@@ -1961,6 +1961,7 @@ function App() {
   const subscribeToCloud = (uid) => {
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
     snapshotUnsub.current = userDoc(uid).onSnapshot(snapshot => {
+      cloudReady.current = true;
       if (snapshot.exists) {
         const d = snapshot.data();
         const incoming = {
@@ -1970,17 +1971,17 @@ function App() {
           bills:     d.bills     || [],
           laborRate: d.laborRate ?? 30,
         };
-        // Store what we just received — save effects will see their data matches and skip
-        lastCloudJSON.current = JSON.stringify(incoming);
-        cloudReady.current = true;
-        // Don't overwrite local state if we have an unsaved local change in flight
+        // If we have a local write in flight, ignore this snapshot entirely —
+        // it contains stale data and would overwrite the user's unsaved changes.
         if (pendingWrite.current) return;
+        lastCloudJSON.current = JSON.stringify(incoming);
         setEntries(incoming.entries);
         setJobs(incoming.jobs);
         setExpenseItems(incoming.expenses);
         setBills(incoming.bills);
         setLaborRate(incoming.laborRate);
       } else {
+        if (pendingWrite.current) return;
         const seed = {
           entries:   LS.get('cpw_entries',   []),
           jobs:      LS.get('cpw_jobs',      []),
@@ -1989,7 +1990,6 @@ function App() {
           laborRate: LS.get('cpw_laborRate', 30),
         };
         lastCloudJSON.current = JSON.stringify(seed);
-        cloudReady.current = true;
         userDoc(uid).set(seed);
       }
     });
@@ -2027,11 +2027,13 @@ function App() {
       return;
     }
 
+    // Set lastCloudJSON immediately so any snapshot arriving during the debounce
+    // window sees "new data" and skips its state update rather than overwriting
+    lastCloudJSON.current = json;
     pendingWrite.current = true;
     clearTimeout(syncTimer.current);
     setSyncing(true);
     syncTimer.current = setTimeout(() => {
-      lastCloudJSON.current = json;
       userDoc(user.uid).set(data)
         .then(() => { pendingWrite.current = false; setSyncing(false); })
         .catch(() => { pendingWrite.current = false; setSyncing(false); });
