@@ -1431,18 +1431,20 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
       {/* Expense Breakdown Pie */}
       {(() => {
         const cats = {};
-        (expenseItems || []).forEach(e => {
+        // Expense log items for the selected period
+        (expenseItems || []).filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => {
           const cat = e.category || 'Misc';
           cats[cat] = (cats[cat] || 0) + (Number(e.amount) || 0);
         });
-        // Job-specific expenses
-        (jobs || []).forEach(j => {
+        // Job-specific expenses for jobs in the selected period
+        periodJobs.forEach(j => {
           (j.expenses || []).forEach(e => {
             cats['Job Expenses'] = (cats['Job Expenses'] || 0) + (Number(e.amount) || 0);
           });
         });
-        // Labor from all daily entries
-        const totalLabor = (entries || []).reduce((s, e) => s + (calcEntry(e, jobs, laborRate, expenseItems).labor || 0), 0);
+        // Labor from daily entries in the selected period
+        const periodEntries = entries.filter(e => e.date >= periodStart && e.date <= periodEnd);
+        const totalLabor = periodEntries.reduce((s, e) => s + (calcEntry(e, jobs, laborRate, expenseItems).labor || 0), 0);
         if (totalLabor > 0) cats['Labor'] = totalLabor;
         const pieLabels = Object.keys(cats);
         const pieData   = Object.values(cats);
