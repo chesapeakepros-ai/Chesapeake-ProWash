@@ -1464,46 +1464,66 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
         const pieColors = ['#3182ce','#e53e3e','#d69e2e','#38a169','#805ad5','#dd6b20','#2b6cb0','#c53030'];
         if (pieLabels.length === 0) return null;
         const total = pieData.reduce((a,b)=>a+b,0);
-        const handleCat = cat => setSelectedCat(selectedCat === cat ? null : cat);
+        const modalItems = selectedCat ? (catItems[selectedCat] || []) : [];
+        const modalTotal = modalItems.reduce((s,i) => s + (Number(i.amount)||0), 0);
+        const modalColor = pieColors[pieLabels.indexOf(selectedCat)] || '#718096';
         return (
           <div className="card">
             <div className="card-title">Expense Breakdown</div>
             <div className="chart-wrap" style={{ height: 280 }}>
-              <PieChart labels={pieLabels} data={pieData} colors={pieColors.slice(0, pieLabels.length)} onSliceClick={handleCat} />
+              <PieChart labels={pieLabels} data={pieData} colors={pieColors.slice(0, pieLabels.length)} onSliceClick={cat => setSelectedCat(cat)} />
             </div>
             <div style={{ marginTop: 10 }}>
               {pieLabels.map((cat, i) => (
-                <div key={cat}>
-                  <div
-                    onClick={() => handleCat(cat)}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 4px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderRadius: 6, background: selectedCat === cat ? 'rgba(49,130,206,0.08)' : 'transparent' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: 3, background: pieColors[i] || '#718096', flexShrink: 0 }} />
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{cat}</span>
-                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>{selectedCat === cat ? 'v' : '>'}</span>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>{fmt$(pieData[i])}</span>
-                      <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>{total > 0 ? fmtPct(pieData[i]/total*100) : ''}</span>
-                    </div>
+                <div key={cat} onClick={() => setSelectedCat(cat)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderRadius: 6 }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 3, background: pieColors[i] || '#718096', flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{cat}</span>
                   </div>
-                  {selectedCat === cat && (
-                    <div style={{ background: 'var(--card-bg)', borderRadius: 8, margin: '4px 0 8px 20px', padding: '6px 10px', border: '1px solid var(--border)' }}>
-                      {(catItems[cat] || []).map((item, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: idx < catItems[cat].length-1 ? '1px solid var(--border)' : 'none' }}>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
-                            {item.sub && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{item.sub}</div>}
-                          </div>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)', whiteSpace: 'nowrap', marginLeft: 12 }}>{fmt$(item.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)' }}>{fmt$(pieData[i])}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{total > 0 ? fmtPct(pieData[i]/total*100) : ''}</span>
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{'>'}</span>
+                  </div>
                 </div>
               ))}
             </div>
+
+            {selectedCat && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+                onClick={() => setSelectedCat(null)}>
+                <div style={{ background: 'var(--bg)', borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 12px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 3, background: modalColor }} />
+                      <span style={{ fontSize: 17, fontWeight: 700 }}>{selectedCat}</span>
+                    </div>
+                    <button className="btn-ghost btn btn-sm" onClick={() => setSelectedCat(null)}>Close</button>
+                  </div>
+                  <div style={{ overflowY: 'auto', padding: '10px 18px 20px' }}>
+                    {modalItems.length === 0
+                      ? <div style={{ color: 'var(--muted)', textAlign: 'center', padding: 24 }}>No items</div>
+                      : modalItems.map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: idx < modalItems.length-1 ? '1px solid var(--border)' : 'none' }}>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</div>
+                              {item.sub && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{item.sub}</div>}
+                            </div>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--red)', whiteSpace: 'nowrap', marginLeft: 16 }}>{fmt$(item.amount)}</span>
+                          </div>
+                        ))
+                    }
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4, borderTop: '2px solid var(--border)' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700 }}>Total</span>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--red)' }}>{fmt$(modalTotal)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
