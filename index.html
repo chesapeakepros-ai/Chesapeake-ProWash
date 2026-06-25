@@ -2007,7 +2007,7 @@ function App() {
   }, []);
 
   // Save to localStorage always; save to Firestore immediately when data changes.
-  // No debounce timer — entries only change when the user clicks Save, not on every keystroke.
+  // No debounce timer - entries only change when user clicks Save, not on every keystroke.
   useEffect(() => {
     LS.set('cpw_entries',   entries);
     LS.set('cpw_jobs',      jobs);
@@ -2023,7 +2023,9 @@ function App() {
 
     lastCloudJSON.current = json; // mark as sent before the async write
     setSyncing(true);
-    userDoc(user.uid).set(data)
+    // JSON round-trip strips undefined values that Firestore rejects
+    const clean = JSON.parse(json);
+    userDoc(user.uid).set(clean)
       .then(() => setSyncing(false))
       .catch(() => setSyncing(false));
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
