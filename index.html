@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0c1f3f" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="CPW Tracker" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-180.png" />
 <title>Chesapeake Pro Wash — Profitability Tracker</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -18,6 +24,10 @@
   });
   const auth = firebase.auth();
   const db   = firebase.firestore();
+  // Offline support - only registers on the live https site
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
 </script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -595,6 +605,18 @@ const today = () => {
 const fmtDate = d => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${m}/${day}/${y.slice(2)}`; };
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
+// Chart colors that stay readable in dark mode
+const IS_DARK = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+const CHART_TEXT = IS_DARK ? '#cbd5e1' : '#2d3748';
+const CHART_AXIS = IS_DARK ? '#94a3b8' : '#4a5568';
+const CHART_GRID = IS_DARK ? 'rgba(255,255,255,.12)' : '#e2e8f0';
+
+// CSV cell escaping - quotes any value containing commas, quotes, or newlines
+const csvCell = v => {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+
 // Jobs that count toward a given date — only Completed jobs count for revenue
 function jobsForDate(jobs, date) {
   return (jobs || []).filter(j => j.dateStart === date && j.status === 'Completed');
@@ -635,11 +657,14 @@ function calcEntry(entry, jobs, laborRate, expenseItems) {
   const dayExpItems = expensesForDate(expenseItems, entry.date);
   const expenseLogTotal = dayExpItems.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  const totalExp = labor + gas + materials + misc + expenseLogTotal;
+  // Job-specific expenses on this date (counted so daily + dashboard match the pie chart)
+  const jobExpTotal = allDayJobs.reduce((s, j) => s + (j.expenses || []).reduce((t, e) => t + (Number(e.amount) || 0), 0), 0);
+
+  const totalExp = labor + gas + materials + misc + expenseLogTotal + jobExpTotal;
   const profit   = totalRevenue - totalExp;
   const margin   = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
-  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, dayExpItems, totalExp, profit, margin };
+  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, dayExpItems, totalExp, profit, margin };
 }
 
 function calcJob(j, laborRate) {
@@ -681,15 +706,19 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_ENTRY);
+  const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
   // Live preview uses current jobs
   const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems), [form, jobs, laborRate, expenseItems]);
 
-  const openNew  = () => { setEditId(null); setForm({ ...EMPTY_ENTRY, date: today() }); setShowForm(true); };
-  const openEdit = entry => { setEditId(entry.id); setForm({ ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_ENTRY); };
+  const openNew  = () => { setEditId(null); const f = { ...EMPTY_ENTRY, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); };
+  const openEdit = entry => { setEditId(entry.id); const f = { ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); };
+  const closeForm = () => {
+    if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
+    setShowForm(false); setEditId(null); setForm(EMPTY_ENTRY);
+  };
 
   const handleSubmit = () => {
     if (!form.date) return;
@@ -757,6 +786,9 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
                 <MoneyInput label="Gas / Fuel"  name="gas"       value={form.gas}       onChange={handleChange} />
                 <MoneyInput label="Materials"   name="materials" value={form.materials} onChange={handleChange} />
                 <div className="form-group span2">
+                  <p className="info-note" style={{ margin: 0 }}>Heads up: anything already logged in the Expenses tab is pulled in automatically below. Only enter gas/materials here if you did NOT log them there, or they will count twice.</p>
+                </div>
+                <div className="form-group span2">
                   <label>Misc Expenses</label>
                   <div className="input-prefix">
                     <span>$</span>
@@ -808,6 +840,12 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
                 <span className="calc-label">Expense Log <span className="auto-badge">AUTO</span></span>
                 <span className="calc-value red">{fmt$(liveCalc.expenseLogTotal)}{liveCalc.dayExpItems.length > 0 ? <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 4 }}>({liveCalc.dayExpItems.length} items)</span> : null}</span>
               </div>
+              {liveCalc.jobExpTotal > 0 && (
+                <div className="calc-row">
+                  <span className="calc-label">Job Expenses <span className="auto-badge">AUTO</span></span>
+                  <span className="calc-value red">{fmt$(liveCalc.jobExpTotal)}</span>
+                </div>
+              )}
               <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Expenses</span><span className="calc-value red">{fmt$(liveCalc.totalExp)}</span></div>
 
               <div className="calc-section-label" style={{ marginTop: 10 }}>Bottom Line</div>
@@ -822,7 +860,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
         <div className="empty"><div className="empty-icon">📋</div><p>No daily entries yet.<br/>Tap above to log your first day.</p></div>
       )}
 
-      {entries.map(entry => {
+      {[...entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(entry => {
         const c = calcEntry(entry, jobs, laborRate, expenseItems);
         const allDayJobs = allJobsForDate(jobs, entry.date);
         return (
@@ -903,7 +941,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
   const [showForm, setShowForm]   = useState(false);
@@ -913,12 +951,18 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
   const [sortDir, setSortDir]     = useState(-1);
   const [expDesc, setExpDesc]     = useState('');
   const [expAmt, setExpAmt]       = useState('');
+  const [formErr, setFormErr]     = useState('');
+  const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
   const calc = useMemo(() => calcJob(form, laborRate), [form, laborRate]);
 
-  const openNew  = () => { setEditJob(null); setForm(EMPTY_JOB); setExpDesc(''); setExpAmt(''); setShowForm(true); };
-  const openEdit = j  => { setEditJob(j); setForm({ ...EMPTY_JOB, ...j, expenses: j.expenses || [] }); setExpDesc(''); setExpAmt(''); setShowForm(true); };
+  const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); };
+  const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); };
+  const closeForm = () => {
+    if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
+    setShowForm(false); setEditJob(null); setFormErr('');
+  };
 
   const addJobExpense = () => {
     if (!expDesc.trim() || !expAmt) return;
@@ -937,7 +981,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
   };
 
   const handleSubmit = () => {
-    if (!form.client || !form.revenue) return;
+    if (!form.client.trim()) { setFormErr('Client name is required.'); return; }
+    setFormErr('');
     if (editJob) {
       setJobs(prev => prev.map(j => j.id === editJob.id ? { ...form, id: editJob.id } : j));
     } else {
@@ -976,7 +1021,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="card-title">
             {editJob ? 'Edit Job' : 'New Job'}
-            <button className="btn-ghost btn btn-sm" onClick={() => { setShowForm(false); setEditJob(null); }}>Cancel</button>
+            <button className="btn-ghost btn btn-sm" onClick={closeForm}>Cancel</button>
           </div>
           <div className="form-grid">
             <div className="form-group span2">
@@ -1023,6 +1068,22 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                 }}
               >
                 {form.googleReview ? '⭐ Reviewed' : '○ No Review'}
+              </button>
+            </div>
+            <div className="form-group" style={{ justifyContent: 'flex-end' }}>
+              <label>Payment</label>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, paid: !f.paid }))}
+                style={{
+                  background: form.paid ? '#22c55e' : '#fbbf24',
+                  color: form.paid ? '#fff' : '#4a2800',
+                  border: 'none', borderRadius: 8, padding: '8px 14px',
+                  fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {form.paid ? '💰 Paid' : '⏳ Unpaid'}
               </button>
             </div>
           </div>
@@ -1080,6 +1141,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
             Saving will auto-create a daily entry for {fmtDate(form.dateStart) || 'this date'} if none exists.
           </p>
 
+          {formErr && <p className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2' }}>{formErr}</p>}
           <button className="btn btn-primary" onClick={handleSubmit}>{editJob ? 'Save Changes' : 'Save Job'}</button>
         </div>
       )}
@@ -1112,6 +1174,9 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                     <div className="job-date">{job.description} · {fmtDate(job.dateStart)}</div>
                     <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
                       <span className={`badge ${statusColor}`}>{job.status}</span>
+                      {job.paid
+                        ? <span className="badge badge-green">💰 Paid</span>
+                        : <span className="badge badge-yellow">⏳ Unpaid</span>}
                       {job.googleReview
                         ? <span className="badge badge-green">⭐ Reviewed</span>
                         : <span className="badge badge-orange">No Review</span>}
@@ -1152,7 +1217,7 @@ function BarChart({ labels, datasets, key: _ }) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: '#2d3748' } },
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: CHART_TEXT } },
           tooltip: {
             callbacks: {
               label: ctx => ' ' + ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1160,8 +1225,8 @@ function BarChart({ labels, datasets, key: _ }) {
           }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#4a5568' } },
-          y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 11 }, color: '#4a5568', callback: v => '$' + v.toLocaleString() } }
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: CHART_AXIS } },
+          y: { grid: { color: CHART_GRID }, ticks: { font: { size: 11 }, color: CHART_AXIS, callback: v => '$' + v.toLocaleString() } }
         },
       }
     });
@@ -1182,7 +1247,7 @@ function LineChart({ labels, datasets }) {
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: '#2d3748' } },
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 16, color: CHART_TEXT } },
           tooltip: {
             callbacks: {
               label: ctx => ' ' + ctx.dataset.label + ': $' + (ctx.parsed.y || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1190,8 +1255,8 @@ function LineChart({ labels, datasets }) {
           }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#4a5568' } },
-          y: { grid: { color: '#e2e8f0' }, ticks: { font: { size: 11 }, color: '#4a5568', callback: v => '$' + v.toLocaleString() } }
+          x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: CHART_AXIS } },
+          y: { grid: { color: CHART_GRID }, ticks: { font: { size: 11 }, color: CHART_AXIS, callback: v => '$' + v.toLocaleString() } }
         },
         elements: { point: { radius: 4, hoverRadius: 6 }, line: { tension: 0.35, borderWidth: 2.5 } },
       }
@@ -1216,7 +1281,7 @@ function PieChart({ labels, data, colors, onSliceClick }) {
           if (elements.length > 0 && onSliceClick) onSliceClick(labels[elements[0].index]);
         },
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 12, color: '#2d3748' } },
+          legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 12, weight: '600' }, padding: 12, color: CHART_TEXT } },
           tooltip: {
             callbacks: {
               label: ctx => ' ' + ctx.label + ': $' + (ctx.parsed || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1273,8 +1338,14 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
   const periodStart  = period === 'today' ? todayStr : period === 'week' ? weekStartStr : monthStart;
   const periodEnd    = period === 'today' ? todayStr : period === 'week' ? weekEndStr   : todayStr;
   const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
-  const reviewedJobs = periodJobs.filter(j => j.googleReview);
-  const reviewPct    = periodJobs.length > 0 ? Math.round((reviewedJobs.length / periodJobs.length) * 100) : 0;
+  // Reviews only make sense for completed jobs - scheduled/cancelled jobs can't have one yet
+  const completedPeriodJobs = periodJobs.filter(j => j.status === 'Completed');
+  const reviewedJobs = completedPeriodJobs.filter(j => j.googleReview);
+  const reviewPct    = completedPeriodJobs.length > 0 ? Math.round((reviewedJobs.length / completedPeriodJobs.length) * 100) : 0;
+
+  // Unpaid completed jobs (all time) - money you're owed
+  const unpaidJobs  = jobs.filter(j => j.status === 'Completed' && !j.paid);
+  const unpaidTotal = unpaidJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
 
   // Monthly overhead from bills
   const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
@@ -1349,9 +1420,42 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
         <div className="stat-card">
           <div className="stat-label">Google Reviews</div>
           <div className="stat-value" style={{ color: '#f59e0b' }}>{reviewedJobs.length} ⭐</div>
-          <div className="stat-sub">{periodJobs.length > 0 ? `${reviewPct}% of ${periodJobs.length} jobs` : 'No jobs yet'}</div>
+          <div className="stat-sub">{completedPeriodJobs.length > 0 ? `${reviewPct}% of ${completedPeriodJobs.length} completed` : 'No completed jobs'}</div>
         </div>
       </div>
+
+      {/* Money owed - unpaid completed jobs */}
+      {unpaidJobs.length > 0 && (
+        <div className="card" style={{ borderTopColor: '#f59e0b' }}>
+          <div className="card-title" style={{ color: '#b45309' }}>
+            Money Owed
+            <span style={{ color: '#b45309', fontSize: 15, fontFamily: 'Inter', fontWeight: 800 }}>{fmt$(unpaidTotal)}</span>
+          </div>
+          {unpaidJobs.map(j => (
+            <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{j.client}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{j.description ? j.description + ' · ' : ''}{fmtDate(j.dateStart)}</div>
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#b45309' }}>{fmt$(j.revenue)}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Completed jobs not yet marked Paid. Mark them paid in the Jobs tab.</p>
+        </div>
+      )}
+
+      {/* Tax set-aside suggestion - month view only */}
+      {period === 'month' && monthStats.profit > 0 && (
+        <div className="card" style={{ borderTopColor: 'var(--green)' }}>
+          <div className="card-title" style={{ color: 'var(--green2)' }}>Tax Set-Aside</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, paddingRight: 12 }}>
+              Suggested amount to set aside this month for self-employment + income tax (30% of net profit). Not tax advice - confirm with your tax preparer.
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--green2)', whiteSpace: 'nowrap' }}>{fmt$(monthStats.profit * 0.30)}</div>
+          </div>
+        </div>
+      )}
 
       {/* Monthly overhead section — only shown on Month tab */}
       {period === 'month' && bills && bills.length > 0 && (
@@ -1563,9 +1667,11 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, user, signIn, signOut }) {
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, user, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+  const fileRef = useRef(null);
 
   const handleSave = () => {
     const r = Number(rate);
@@ -1578,7 +1684,7 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
       const c = calcEntry(e, jobs, laborRate, expenseItems);
       rows.push([e.date, c.jobRevenue.toFixed(2), c.additionalRevenue.toFixed(2), c.totalRevenue.toFixed(2), c.totalHours, c.jobHours.toFixed(2), c.travelHours.toFixed(2), c.labor.toFixed(2), e.gas||0, e.materials||0, e.misc||0, e.miscNote||'', c.expenseLogTotal.toFixed(2), c.totalExp.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1)]);
     });
-    const csv = rows.map(r => r.join(',')).join('\n');
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `cpw-entries-${today()}.csv`; a.click();
@@ -1586,12 +1692,12 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
   };
 
   const exportJobsCSV = () => {
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Profit','Margin %','Status']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Profit','Margin %','Status','Paid','Google Review']];
     jobs.forEach(j => {
       const c = calcJob(j, laborRate);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status]);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No']);
     });
-    const csv = rows.map(r => r.join(',')).join('\n');
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `cpw-jobs-${today()}.csv`; a.click();
@@ -1599,21 +1705,34 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
   };
 
   const exportBackup = () => {
-    const data = JSON.stringify({ entries, jobs, laborRate }, null, 2);
+    const data = JSON.stringify({ entries, jobs, expenses: expenseItems, bills, laborRate }, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `cpw-backup-${today()}.json`; a.click();
     URL.revokeObjectURL(url);
   };
 
-  const clearAll = () => {
-    if (confirm('Delete ALL data? This cannot be undone.')) {
-      localStorage.removeItem('cpw_entries');
-      localStorage.removeItem('cpw_jobs');
-      localStorage.removeItem('cpw_expenses');
-      localStorage.removeItem('cpw_bills');
-      window.location.reload();
-    }
+  const handleImportFile = e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (!d || (!Array.isArray(d.entries) && !Array.isArray(d.jobs))) {
+          setImportMsg('That file does not look like a CPW backup.');
+          return;
+        }
+        if (!confirm('Restore this backup? It will REPLACE all current data on every synced device.')) return;
+        onImport(d);
+        setImportMsg('Backup restored successfully.');
+        setTimeout(() => setImportMsg(''), 4000);
+      } catch {
+        setImportMsg('Could not read that file - it is not valid JSON.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
@@ -1671,9 +1790,14 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
           <button className="btn btn-edit btn-sm btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportJobsCSV}>
             📥 Export Jobs (CSV)
           </button>
-          <button className="btn btn-edit btn-sm btn" style={{ width: '100%' }} onClick={exportBackup}>
+          <button className="btn btn-edit btn-sm btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportBackup}>
             💾 Backup All Data (JSON)
           </button>
+          <button className="btn btn-edit btn-sm btn" style={{ width: '100%' }} onClick={() => fileRef.current && fileRef.current.click()}>
+            📤 Restore from Backup
+          </button>
+          <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleImportFile} />
+          {importMsg && <p className="info-note" style={{ marginTop: 8 }}>{importMsg}</p>}
         </div>
       </div>
 
@@ -1682,9 +1806,9 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
         <div className="setting-row">
           <div style={{ fontSize: 13, color: '#718096', lineHeight: 1.6 }}>
             <strong>Chesapeake Pro Wash</strong><br />
-            Profitability Tracker v1.1<br />
-            All data stored locally on this device.<br />
-            No account or internet required.
+            Profitability Tracker v2.0<br />
+            Sign in with Google to sync across devices.<br />
+            Data is also saved on this device as a backup.
           </div>
         </div>
       </div>
@@ -1692,9 +1816,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, use
       <div className="card">
         <div className="card-title" style={{ color: '#c53030' }}>Danger Zone</div>
         <div className="setting-row">
-          <button className="btn btn-danger btn" style={{ width: '100%' }} onClick={clearAll}>
+          <button className="btn btn-danger btn" style={{ width: '100%' }} onClick={onClearAll}>
             🗑 Clear All Data
           </button>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Deletes everything on this device AND in the cloud. Export a backup first.</p>
         </div>
       </div>
     </div>
@@ -1709,15 +1834,17 @@ function BillsTab({ bills, setBills }) {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_BILL);
+  const [formErr, setFormErr]   = useState('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
-  const openNew  = () => { setEditId(null); setForm(EMPTY_BILL); setShowForm(true); };
-  const openEdit = b  => { setEditId(b.id); setForm(b);          setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_BILL); };
+  const openNew  = () => { setEditId(null); setForm(EMPTY_BILL); setFormErr(''); setShowForm(true); };
+  const openEdit = b  => { setEditId(b.id); setForm(b); setFormErr(''); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_BILL); setFormErr(''); };
 
   const handleSubmit = () => {
-    if (!form.name || !form.amount) return;
+    if (!form.name || !form.amount) { setFormErr('Bill name and amount are required.'); return; }
+    setFormErr('');
     if (editId) {
       setBills(prev => prev.map(b => b.id === editId ? { ...form, id: editId } : b));
     } else {
@@ -1778,6 +1905,7 @@ function BillsTab({ bills, setBills }) {
             </div>
           </div>
           <p className="info-note">Fixed bills appear in the Monthly view of the Dashboard as overhead.</p>
+          {formErr && <p className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2' }}>{formErr}</p>}
           <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Save Bill'}</button>
         </div>
       )}
@@ -1842,6 +1970,8 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_EXP);
   const [filterDate, setFilterDate] = useState('');
+  const [formErr, setFormErr]   = useState('');
+  const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
@@ -1852,19 +1982,23 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
     });
   };
 
-  const openNew  = () => { setEditId(null); setForm({ ...EMPTY_EXP, date: today() }); setShowForm(true); };
-  const openEdit = item => { setEditId(item.id); setForm(item); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_EXP); };
+  const openNew  = () => { setEditId(null); const f = { ...EMPTY_EXP, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setFormErr(''); setShowForm(true); };
+  const openEdit = item => { setEditId(item.id); setForm(item); origForm.current = JSON.stringify(item); setFormErr(''); setShowForm(true); };
+  const closeForm = () => {
+    if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
+    setShowForm(false); setEditId(null); setForm(EMPTY_EXP); setFormErr('');
+  };
 
   const handleSubmit = () => {
-    if (!form.description || !form.amount || !form.date) return;
+    if (!form.description || !form.amount || !form.date) { setFormErr('Description, amount, and date are all required.'); return; }
+    setFormErr('');
     if (editId) {
       setExpenseItems(prev => prev.map(e => e.id === editId ? { ...form, id: editId } : e));
     } else {
       setExpenseItems(prev => [{ ...form, id: uid() }, ...prev]);
       ensureDailyEntry(form.date);
     }
-    closeForm();
+    setShowForm(false); setEditId(null); setForm(EMPTY_EXP);
   };
 
   const handleDelete = id => {
@@ -1926,6 +2060,7 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
             </div>
           </div>
           <p className="info-note">This expense will automatically appear in the Daily Entry for {fmtDate(form.date) || 'this date'}.</p>
+          {formErr && <p className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2' }}>{formErr}</p>}
           <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Log Expense'}</button>
         </div>
       )}
@@ -2003,11 +2138,13 @@ function App() {
   // Auth + sync state
   const [user, setUser]           = useState(null);
   const [authReady, setAuthReady] = useState(false);
-  const [syncing, setSyncing]     = useState(false);
+  const [syncState, setSyncState] = useState('synced'); // synced | saving | error
   const snapshotUnsub             = useRef(null);
   const lastCloudJSON             = useRef('');
   const cloudReady                = useRef(false);
   const isSaving                  = useRef(false);
+  const retryPending              = useRef(false);
+  const retryTimer                = useRef(null);
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
 
@@ -2025,9 +2162,9 @@ function App() {
           laborRate: d.laborRate ?? 30,
         };
         const incomingJSON = JSON.stringify(incoming);
-        // Skip if a local write is in progress (would overwrite unsaved changes)
-        // or if this snapshot is our own write echoing back.
-        if (isSaving.current) return;
+        // Skip if a local write is in progress or waiting to retry (would
+        // overwrite unsaved changes), or if this is our own write echoing back.
+        if (isSaving.current || retryPending.current) return;
         if (incomingJSON === lastCloudJSON.current) return;
         lastCloudJSON.current = incomingJSON;
         setEntries(incoming.entries);
@@ -2062,8 +2199,35 @@ function App() {
     return () => { unsub(); if (snapshotUnsub.current) snapshotUnsub.current(); };
   }, []);
 
+  // Cloud save with retry. lastCloudJSON is only updated after a CONFIRMED
+  // write, so a failed save gets retried instead of silently lost.
+  const doCloudSave = (uidVal, json) => {
+    clearTimeout(retryTimer.current);
+    isSaving.current = true;
+    setSyncState('saving');
+    try {
+      // JSON round-trip strips undefined values that Firestore rejects
+      userDoc(uidVal).set(JSON.parse(json))
+        .then(() => {
+          lastCloudJSON.current = json;
+          isSaving.current = false;
+          retryPending.current = false;
+          setSyncState('synced');
+        })
+        .catch(() => {
+          isSaving.current = false;
+          retryPending.current = true;
+          setSyncState('error');
+          retryTimer.current = setTimeout(() => doCloudSave(uidVal, json), 8000);
+        });
+    } catch(e) {
+      isSaving.current = false;
+      retryPending.current = true;
+      setSyncState('error');
+    }
+  };
+
   // Save to localStorage always; save to Firestore immediately when data changes.
-  // No debounce timer - entries only change when user clicks Save, not on every keystroke.
   useEffect(() => {
     LS.set('cpw_entries',   entries);
     LS.set('cpw_jobs',      jobs);
@@ -2077,22 +2241,37 @@ function App() {
     const json = JSON.stringify(data);
     if (json === lastCloudJSON.current) return; // nothing changed
 
-    lastCloudJSON.current = json;
-    isSaving.current = true;
-    setSyncing(true);
-    const clean = JSON.parse(json);
-    try {
-      userDoc(user.uid).set(clean)
-        .then(() => { isSaving.current = false; setSyncing(false); })
-        .catch(() => { isSaving.current = false; setSyncing(false); });
-    } catch(e) {
-      isSaving.current = false;
-      setSyncing(false);
-    }
+    doCloudSave(user.uid, json);
   }, [entries, jobs, expenseItems, bills, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
-  const signOut = () => { auth.signOut(); cloudReady.current = false; if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; } };
+  const signOut = () => {
+    auth.signOut();
+    cloudReady.current = false;
+    clearTimeout(retryTimer.current);
+    retryPending.current = false;
+    if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
+  };
+
+  // Restore from a JSON backup - replaces all state, which then syncs to cloud
+  const importData = (d) => {
+    setEntries(Array.isArray(d.entries) ? d.entries : []);
+    setJobs(Array.isArray(d.jobs) ? d.jobs : []);
+    setExpenseItems(Array.isArray(d.expenses) ? d.expenses : []);
+    setBills(Array.isArray(d.bills) ? d.bills : []);
+    setLaborRate(Number(d.laborRate) || 30);
+  };
+
+  // Clear everything: local AND cloud, then reload fresh
+  const clearAllData = () => {
+    if (!confirm('Delete ALL data on this device AND in the cloud? This cannot be undone.')) return;
+    if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
+    clearTimeout(retryTimer.current);
+    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
+    const done = () => window.location.reload();
+    if (user) userDoc(user.uid).delete().then(done).catch(done);
+    else done();
+  };
 
   const tabs = [
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
@@ -2138,8 +2317,8 @@ function App() {
         <div className="sync-bar">
           {user.photoURL && <img src={user.photoURL} style={{ width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--gold)' }} />}
           <span style={{ color: 'rgba(255,255,255,.8)', fontSize: 12 }}>{user.displayName}</span>
-          <div className="sync-dot" style={{ background: syncing ? 'var(--gold2)' : '#4ade80' }} />
-          <span>{syncing ? 'Saving…' : 'Synced'}</span>
+          <div className="sync-dot" style={{ background: syncState === 'saving' ? 'var(--gold2)' : syncState === 'error' ? '#f87171' : '#4ade80' }} />
+          <span>{syncState === 'saving' ? 'Saving…' : syncState === 'error' ? 'Save failed — retrying…' : 'Synced'}</span>
         </div>
       ) : authReady && (
         <div className="sync-bar" style={{ cursor: 'pointer' }} onClick={signIn}>
@@ -2153,7 +2332,7 @@ function App() {
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} user={user} signIn={signIn} signOut={signOut} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
