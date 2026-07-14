@@ -684,6 +684,7 @@ const icons = {
   settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
   expenses: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
   bills: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
+  employees: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
 };
 
 function MoneyInput({ label, name, value, onChange, placeholder = "0.00", hint }) {
@@ -941,9 +942,9 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeId: '' };
 
-function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
+function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const [showForm, setShowForm]   = useState(false);
   const [editJob, setEditJob]     = useState(null);
   const [form, setForm]           = useState(EMPTY_JOB);
@@ -1053,6 +1054,16 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                 <option>Scheduled</option>
                 <option>Cancelled</option>
               </select>
+            </div>
+            <div className="form-group span2">
+              <label>Done By (Employee)</label>
+              <select name="employeeId" value={form.employeeId || ''} onChange={handleChange}>
+                <option value="">— Unassigned —</option>
+                {(employees || []).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+              </select>
+              {(employees || []).length === 0 && (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Add employees in the Settings tab to assign them.</span>
+              )}
             </div>
             <div className="form-group" style={{ justifyContent: 'flex-end' }}>
               <label>Google Review</label>
@@ -1174,6 +1185,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate }) {
                     <div className="job-date">{job.description} · {fmtDate(job.dateStart)}</div>
                     <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
                       <span className={`badge ${statusColor}`}>{job.status}</span>
+                      {job.employeeId && (employees || []).find(e => e.id === job.employeeId) &&
+                        <span className="badge badge-blue">👤 {(employees.find(e => e.id === job.employeeId) || {}).name}</span>}
                       {job.paid
                         ? <span className="badge badge-green">💰 Paid</span>
                         : <span className="badge badge-yellow">⏳ Unpaid</span>}
@@ -1671,15 +1684,28 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, user, signIn, signOut, onImport, onClearAll }) {
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, employees, setEmployees, user, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
   const [importMsg, setImportMsg] = useState('');
+  const [empName, setEmpName] = useState('');
+  const [empRate, setEmpRate] = useState('');
   const fileRef = useRef(null);
 
   const handleSave = () => {
     const r = Number(rate);
     if (r > 0) { setLaborRate(r); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  };
+
+  const addEmployee = () => {
+    if (!empName.trim()) return;
+    setEmployees(prev => [...prev, { id: uid(), name: empName.trim(), commissionRate: Number(empRate) || 0 }]);
+    setEmpName(''); setEmpRate('');
+  };
+  const removeEmployee = id => {
+    if (confirm('Remove this employee? Jobs assigned to them will become Unassigned.')) {
+      setEmployees(prev => prev.filter(e => e.id !== id));
+    }
   };
 
   const exportCSV = () => {
@@ -1696,10 +1722,11 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bil
   };
 
   const exportJobsCSV = () => {
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Profit','Margin %','Status','Paid','Google Review']];
+    const empName = id => (employees || []).find(e => e.id === id)?.name || '';
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Profit','Margin %','Status','Paid','Google Review','Employee']];
     jobs.forEach(j => {
       const c = calcJob(j, laborRate);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No']);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', empName(j.employeeId)]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -1782,6 +1809,39 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bil
           <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 6 }}>
             Covers $25/hr wage + payroll tax burden. Applied to all labor calculations including travel time.
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Employees / Crew</div>
+        <div className="setting-row">
+          {(employees || []).length === 0 && (
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 10 }}>No employees yet. Add your crew below, then assign them to jobs.</p>
+          )}
+          {(employees || []).map(emp => (
+            <div key={emp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>👤 {emp.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{Number(emp.commissionRate) > 0 ? `${emp.commissionRate}% commission` : 'No commission set'}</div>
+              </div>
+              <button className="btn btn-sm btn-danger" onClick={() => removeEmployee(emp.id)}>Remove</button>
+            </div>
+          ))}
+          <div className="form-grid" style={{ marginTop: 12 }}>
+            <div className="form-group span2">
+              <label>Employee Name</label>
+              <input value={empName} onChange={e => setEmpName(e.target.value)} placeholder="e.g. Mike R." />
+            </div>
+            <div className="form-group">
+              <label>Commission %</label>
+              <input type="number" inputMode="decimal" value={empRate} onChange={e => setEmpRate(e.target.value)} placeholder="e.g. 20" min="0" max="100" step="1" />
+            </div>
+            <div className="form-group" style={{ justifyContent: 'flex-end' }}>
+              <label style={{ opacity: 0 }}>_</label>
+              <button className="btn btn-primary" style={{ marginTop: 0 }} onClick={addEmployee}>+ Add Employee</button>
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Commission % is applied to the revenue of each job the employee completes, shown in the Crew tab.</p>
         </div>
       </div>
 
@@ -2130,6 +2190,105 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
   );
 }
 
+// ─── Employees / Crew Tab ──────────────────────────────────────
+function EmployeesTab({ employees, jobs }) {
+  const [period, setPeriod] = useState('week');
+
+  // Period date range (same Sun–Sat week logic as the dashboard)
+  const todayStr = today();
+  const [ty, tm, td] = todayStr.split('-').map(Number);
+  const nowET = new Date(ty, tm - 1, td);
+  const toStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const weekStart = new Date(nowET); weekStart.setDate(nowET.getDate() - nowET.getDay());
+  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const monthStart = `${ty}-${String(tm).padStart(2,'0')}-01`;
+  const periodStart = period === 'today' ? todayStr : period === 'week' ? toStr(weekStart) : monthStart;
+  const periodEnd   = period === 'today' ? todayStr : period === 'week' ? toStr(weekEnd)   : todayStr;
+
+  // Completed jobs in period, grouped per employee
+  const inPeriod = (jobs || []).filter(j =>
+    j.status === 'Completed' && j.dateStart >= periodStart && j.dateStart <= periodEnd);
+
+  const rows = (employees || []).map(emp => {
+    const empJobs = inPeriod.filter(j => j.employeeId === emp.id);
+    const revenue = empJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
+    const commission = revenue * (Number(emp.commissionRate) || 0) / 100;
+    return { emp, jobCount: empJobs.length, revenue, commission };
+  }).sort((a, b) => b.revenue - a.revenue);
+
+  const unassigned = inPeriod.filter(j => !j.employeeId || !(employees || []).some(e => e.id === j.employeeId));
+  const unassignedRev = unassigned.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
+
+  const totalRev = rows.reduce((s, r) => s + r.revenue, 0) + unassignedRev;
+  const totalComm = rows.reduce((s, r) => s + r.commission, 0);
+
+  const label = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
+
+  return (
+    <div>
+      <div className="period-tabs">
+        {[['today','Today'],['week','Week'],['month','Month']].map(([v, l]) => (
+          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => setPeriod(v)}>{l}</button>
+        ))}
+      </div>
+
+      {(employees || []).length === 0 ? (
+        <div className="empty"><div className="empty-icon">👥</div><p>No employees yet.<br/>Add your crew in the Settings tab, then assign them to jobs.</p></div>
+      ) : (
+        <>
+          {/* Summary banner */}
+          <div className="stat-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="stat-card">
+              <div className="stat-label">Crew Revenue</div>
+              <div className="stat-value blue">{fmt$(totalRev)}</div>
+              <div className="stat-sub">{label}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Commission Owed</div>
+              <div className="stat-value orange">{fmt$(totalComm)}</div>
+              <div className="stat-sub">{label}</div>
+            </div>
+          </div>
+
+          {rows.map(({ emp, jobCount, revenue, commission }) => (
+            <div key={emp.id} className="card">
+              <div className="list-item-header">
+                <div>
+                  <div className="list-item-title">👤 {emp.name}</div>
+                  <div className="list-item-sub">{jobCount} job{jobCount !== 1 ? 's' : ''} completed · {Number(emp.commissionRate) > 0 ? `${emp.commissionRate}% commission` : 'no commission set'}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="calc-value blue" style={{ fontSize: 17 }}>{fmt$(revenue)}</div>
+                  <div className="margin-pct-label">revenue</div>
+                </div>
+              </div>
+              <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <div className="detail-grid-item"><div className="dg-label">Revenue Generated</div><div className="dg-value">{fmt$(revenue)}</div></div>
+                <div className="detail-grid-item"><div className="dg-label">Commission Owed</div><div className="dg-value" style={{ color: 'var(--travel)' }}>{fmt$(commission)}</div></div>
+              </div>
+            </div>
+          ))}
+
+          {unassigned.length > 0 && (
+            <div className="card" style={{ borderTopColor: 'var(--muted)' }}>
+              <div className="list-item-header">
+                <div>
+                  <div className="list-item-title" style={{ color: 'var(--muted)' }}>Unassigned Jobs</div>
+                  <div className="list-item-sub">{unassigned.length} completed job{unassigned.length !== 1 ? 's' : ''} with no employee</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="calc-value blue" style={{ fontSize: 17 }}>{fmt$(unassignedRev)}</div>
+                  <div className="margin-pct-label">revenue</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Root App ──────────────────────────────────────────────────
 function App() {
   const [tab, setTab]               = useState('dash');
@@ -2137,6 +2296,7 @@ function App() {
   const [jobs, setJobs]             = useState(() => LS.get('cpw_jobs', []));
   const [expenseItems, setExpenseItems] = useState(() => LS.get('cpw_expenses', []));
   const [bills, setBills]           = useState(() => LS.get('cpw_bills', []));
+  const [employees, setEmployees]   = useState(() => LS.get('cpw_employees', []));
   const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
 
   // Auth + sync state
@@ -2163,6 +2323,7 @@ function App() {
           jobs:      d.jobs      || [],
           expenses:  d.expenses  || [],
           bills:     d.bills     || [],
+          employees: d.employees || [],
           laborRate: d.laborRate ?? 30,
         };
         const incomingJSON = JSON.stringify(incoming);
@@ -2175,6 +2336,7 @@ function App() {
         setJobs(incoming.jobs);
         setExpenseItems(incoming.expenses);
         setBills(incoming.bills);
+        setEmployees(incoming.employees);
         setLaborRate(incoming.laborRate);
       } else {
         const seed = {
@@ -2182,6 +2344,7 @@ function App() {
           jobs:      LS.get('cpw_jobs',      []),
           expenses:  LS.get('cpw_expenses',  []),
           bills:     LS.get('cpw_bills',     []),
+          employees: LS.get('cpw_employees', []),
           laborRate: LS.get('cpw_laborRate', 30),
         };
         lastCloudJSON.current = JSON.stringify(seed);
@@ -2237,16 +2400,17 @@ function App() {
     LS.set('cpw_jobs',      jobs);
     LS.set('cpw_expenses',  expenseItems);
     LS.set('cpw_bills',     bills);
+    LS.set('cpw_employees', employees);
     LS.set('cpw_laborRate', laborRate);
 
     if (!user || !cloudReady.current) return;
 
-    const data = { entries, jobs, expenses: expenseItems, bills, laborRate };
+    const data = { entries, jobs, expenses: expenseItems, bills, employees, laborRate };
     const json = JSON.stringify(data);
     if (json === lastCloudJSON.current) return; // nothing changed
 
     doCloudSave(user.uid, json);
-  }, [entries, jobs, expenseItems, bills, laborRate, user]);
+  }, [entries, jobs, expenseItems, bills, employees, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   const signOut = () => {
@@ -2263,6 +2427,7 @@ function App() {
     setJobs(Array.isArray(d.jobs) ? d.jobs : []);
     setExpenseItems(Array.isArray(d.expenses) ? d.expenses : []);
     setBills(Array.isArray(d.bills) ? d.bills : []);
+    setEmployees(Array.isArray(d.employees) ? d.employees : []);
     setLaborRate(Number(d.laborRate) || 30);
   };
 
@@ -2271,7 +2436,7 @@ function App() {
     if (!confirm('Delete ALL data on this device AND in the cloud? This cannot be undone.')) return;
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
     clearTimeout(retryTimer.current);
-    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
+    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_employees','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
     const done = () => window.location.reload();
     if (user) userDoc(user.uid).delete().then(done).catch(done);
     else done();
@@ -2281,6 +2446,7 @@ function App() {
     { id: 'daily',    label: 'Daily',    icon: icons.daily    },
     { id: 'jobs',     label: 'Jobs',     icon: icons.jobs     },
     { id: 'expenses', label: 'Expenses', icon: icons.expenses },
+    { id: 'employees',label: 'Crew',     icon: icons.employees},
     { id: 'bills',    label: 'Bills',    icon: icons.bills    },
     { id: 'dash',     label: 'Dashboard',icon: icons.dash     },
     { id: 'settings', label: 'Settings', icon: icons.settings },
@@ -2332,11 +2498,12 @@ function App() {
 
       <div className="content">
         {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
-        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} />}
+        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} />}
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
+        {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
