@@ -1316,7 +1316,6 @@ function PieChart({ labels, data, colors, onSliceClick }) {
 // ─── Dashboard ──────────────────────────────────────────────────
 function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }) {
   const [period, setPeriod] = useState('week');
-  const [chartMode, setChartMode] = useState('day');
   const [selectedCat, setSelectedCat] = useState(null);
 
   const now = new Date();
@@ -1368,33 +1367,6 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
   const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
   const monthNetAfterBills = monthStats.profit - totalBills;
 
-  const last14 = useMemo(() => {
-    const days = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(nowET); d.setDate(nowET.getDate() - i);
-      days.push(toStr(d));
-    }
-    return days.map(d => {
-      const es = filterEntries(d, d);
-      const r = rollup(es);
-      return { date: d, label: d.slice(5).replace('-', '/'), ...r };
-    });
-  }, [entries, jobs, laborRate]);
-
-  const last8weeks = useMemo(() => {
-    const weeks = [];
-    for (let i = 7; i >= 0; i--) {
-      // Each week starts on Sunday
-      const wSun = new Date(weekStart); wSun.setDate(weekStart.getDate() - i * 7);
-      const wSat = new Date(wSun); wSat.setDate(wSun.getDate() + 6);
-      const es = filterEntries(toStr(wSun), toStr(wSat));
-      const r = rollup(es);
-      weeks.push({ label: `${String(wSun.getMonth()+1)}/${String(wSun.getDate())}`, ...r });
-    }
-    return weeks;
-  }, [entries, jobs, laborRate]);
-
-  const chartData = chartMode === 'day' ? last14 : last8weeks;
 
   const jobsSorted = useMemo(() => {
     return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate) })).sort((a, b) => b.margin - a.margin);
@@ -1524,40 +1496,6 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>No fixed bills logged — add them in the <strong>Bills</strong> tab to see monthly overhead here.</div>
         </div>
       )}
-
-      <div className="card">
-        <div className="card-title">
-          Revenue vs Expenses
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className={`btn btn-sm ${chartMode==='day'?'btn-primary':'btn-edit'}`} onClick={() => setChartMode('day')} style={{ fontSize: 11 }}>Daily</button>
-            <button className={`btn btn-sm ${chartMode==='week'?'btn-primary':'btn-edit'}`} onClick={() => setChartMode('week')} style={{ fontSize: 11 }}>Weekly</button>
-          </div>
-        </div>
-        <div className="chart-wrap">
-          <BarChart
-            key={chartMode + entries.length + jobs.length}
-            labels={chartData.map(d => d.label)}
-            datasets={[
-              { label: 'Revenue',  data: chartData.map(d => d.revenue),  backgroundColor: '#3182ce88', borderColor: '#3182ce', borderWidth: 1.5, borderRadius: 4 },
-              { label: 'Expenses', data: chartData.map(d => d.expenses), backgroundColor: '#e53e3e55', borderColor: '#e53e3e', borderWidth: 1.5, borderRadius: 4 },
-            ]}
-          />
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-title">Profit Trend (14 days)</div>
-        <div className="chart-wrap">
-          <LineChart
-            key={'profit' + entries.length + jobs.length}
-            labels={last14.map(d => d.label)}
-            datasets={[
-              { label: 'Profit', data: last14.map(d => d.profit), borderColor: '#38a169', backgroundColor: '#38a16930', fill: true },
-              { label: 'Revenue', data: last14.map(d => d.revenue), borderColor: '#3182ce', backgroundColor: 'transparent', borderDash: [5,3] },
-            ]}
-          />
-        </div>
-      </div>
 
       {/* Expense Breakdown Pie */}
       {(() => {
