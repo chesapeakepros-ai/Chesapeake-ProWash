@@ -1706,7 +1706,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, signIn, signOut, onImport, onClearAll }) {
+function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, syncState, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
   const [importMsg, setImportMsg] = useState('');
@@ -1841,6 +1841,11 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
           <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 6 }}>
             Covers wage + payroll tax burden. Applied to labor going forward. Changing it will NOT affect jobs or days you already logged — those keep the rate they were entered at.
           </div>
+          {user && syncState === 'error' && (
+            <div className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2', marginTop: 8 }}>
+              ⚠ This device saved your change, but it isn't reaching the cloud (check your connection or Firestore rules). Until it syncs, the change may be lost when you reload or open another device.
+            </div>
+          )}
         </div>
       </div>
 
@@ -2634,7 +2639,7 @@ function App() {
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} syncState={syncState} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
