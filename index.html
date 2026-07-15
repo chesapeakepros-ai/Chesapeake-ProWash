@@ -645,7 +645,7 @@ function expensesForDate(expenseItems, date) {
 // Full calc for a daily entry, incorporating jobs + expense log on the same date.
 // Uses the entry's own frozen laborRate if it has one, so past entries are
 // unaffected when the global rate changes; falls back to the current rate.
-function calcEntry(entry, jobs, laborRate, expenseItems) {
+function calcEntry(entry, jobs, laborRate, expenseItems, employees) {
   const rate = Number(entry.laborRate ?? laborRate) || 30;
   const completedJobs = jobsForDate(jobs, entry.date);      // completed only — for revenue
   const allDayJobs    = allJobsForDate(jobs, entry.date);   // all jobs — for hours
@@ -673,22 +673,33 @@ function calcEntry(entry, jobs, laborRate, expenseItems) {
   // Job-specific expenses on this date (counted so daily + dashboard match the pie chart)
   const jobExpTotal = allDayJobs.reduce((s, j) => s + (j.expenses || []).reduce((t, e) => t + (Number(e.amount) || 0), 0), 0);
 
-  const totalExp = labor + gas + materials + misc + expenseLogTotal + jobExpTotal;
+  // Employee commission on this date's jobs, counted as an expense
+  const commissionTotal = allDayJobs.reduce((s, j) => s + commissionForJob(j, employees), 0);
+
+  const totalExp = labor + gas + materials + misc + expenseLogTotal + jobExpTotal + commissionTotal;
   const profit   = totalRevenue - totalExp;
   const margin   = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
-  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, dayExpItems, totalExp, profit, margin };
+  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, commissionTotal, dayExpItems, totalExp, profit, margin };
 }
 
-function calcJob(j, laborRate) {
+// Commission owed to the employee assigned to a job = job revenue × their rate.
+function commissionForJob(job, employees) {
+  const emp = (employees || []).find(e => e.id === job.employeeId);
+  if (!emp) return 0;
+  return (Number(job.revenue) || 0) * (Number(emp.commissionRate) || 0) / 100;
+}
+
+function calcJob(j, laborRate, employees) {
   // Uses the job's own frozen rate if set, so changing the global rate later
   // doesn't alter this job's numbers; falls back to the current rate.
   const labor    = (Number(j.manHours) || 0) * (Number(j.laborRate ?? laborRate) || 30);
   const revenue  = Number(j.revenue) || 0;
   const jobExps  = (j.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const profit   = revenue - labor - jobExps;
+  const commission = commissionForJob(j, employees);
+  const profit   = revenue - labor - jobExps - commission;
   const margin   = revenue > 0 ? (profit / revenue) * 100 : 0;
-  return { labor, jobExps, profit, margin };
+  return { labor, jobExps, commission, profit, margin };
 }
 
 // ─── Icons ─────────────────────────────────────────────────────
@@ -718,7 +729,7 @@ function MoneyInput({ label, name, value, onChange, placeholder = "0.00", hint }
 // ─── Daily Entry Tab ────────────────────────────────────────────
 const EMPTY_ENTRY = { date: today(), additionalRevenue: '', manHours: '', gas: '', materials: '', misc: '', miscNote: '' };
 
-function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
+function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employees }) {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_ENTRY);
@@ -727,7 +738,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
   // Live preview uses current jobs
-  const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems), [form, jobs, laborRate, expenseItems]);
+  const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems, employees), [form, jobs, laborRate, expenseItems, employees]);
 
   const openNew  = () => { setEditId(null); const f = { ...EMPTY_ENTRY, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
   const openEdit = entry => { setEditId(entry.id); const f = { ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
@@ -877,7 +888,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
       )}
 
       {[...entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(entry => {
-        const c = calcEntry(entry, jobs, laborRate, expenseItems);
+        const c = calcEntry(entry, jobs, laborRate, expenseItems, employees);
         const allDayJobs = allJobsForDate(jobs, entry.date);
         return (
           <div key={entry.id} className="card">
@@ -916,6 +927,12 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
               <div className="detail-grid-item"><div className="dg-label">Gas+Mat</div><div className="dg-value">{fmt$(c.gas + c.materials)}</div></div>
               <div className="detail-grid-item"><div className="dg-label">Misc</div><div className="dg-value">{fmt$(c.misc)}{entry.miscNote ? <span className="misc-note-text">{entry.miscNote}</span> : null}</div></div>
             </div>
+            {c.commissionTotal > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 12 }}>
+                <span style={{ color: 'var(--navy2)', fontWeight: 600 }}>👤 Employee Commission</span>
+                <span style={{ color: 'var(--loss)', fontWeight: 700 }}>−{fmt$(c.commissionTotal)}</span>
+              </div>
+            )}
 
             {/* Expense log items auto-pulled for this date */}
             {c.dayExpItems.length > 0 && (
@@ -971,7 +988,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
-  const calc = useMemo(() => calcJob(form, laborRate), [form, laborRate]);
+  const calc = useMemo(() => calcJob(form, laborRate, employees), [form, laborRate, employees]);
 
   const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
@@ -1021,8 +1038,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const sorted = useMemo(() => {
     return [...jobs].sort((a, b) => {
       let av, bv;
-      if (sortKey === 'profit')   { av = calcJob(a, laborRate).profit;  bv = calcJob(b, laborRate).profit;  }
-      else if (sortKey === 'margin') { av = calcJob(a, laborRate).margin; bv = calcJob(b, laborRate).margin; }
+      if (sortKey === 'profit')   { av = calcJob(a, laborRate, employees).profit;  bv = calcJob(b, laborRate, employees).profit;  }
+      else if (sortKey === 'margin') { av = calcJob(a, laborRate, employees).margin; bv = calcJob(b, laborRate, employees).margin; }
       else if (sortKey === 'revenue') { av = Number(a.revenue)||0; bv = Number(b.revenue)||0; }
       else { av = a.dateStart; bv = b.dateStart; }
       return sortDir * (av > bv ? 1 : av < bv ? -1 : 0);
@@ -1159,6 +1176,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
           <div className="calc-box">
             <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${form.laborRate ?? laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
             {calc.jobExps > 0 && <div className="calc-row"><span className="calc-label">Job Expenses</span><span className="calc-value red">−{fmt$(calc.jobExps)}</span></div>}
+            {calc.commission > 0 && <div className="calc-row"><span className="calc-label">Commission {(() => { const e = (employees||[]).find(x=>x.id===form.employeeId); return e ? `(${e.commissionRate}%)` : ''; })()}</span><span className="calc-value red">−{fmt$(calc.commission)}</span></div>}
             <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
             <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
           </div>
@@ -1190,7 +1208,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
             </button>
           </div>
           {sorted.map(job => {
-            const c = calcJob(job, laborRate);
+            const c = calcJob(job, laborRate, employees);
             const statusColor = job.status === 'Completed' ? 'badge-green' : job.status === 'In Progress' ? 'badge-blue' : job.status === 'Cancelled' ? 'badge-orange' : 'badge-yellow';
             return (
               <div key={job.id} className="list-item">
@@ -1220,8 +1238,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
                   </div>
                 </div>
                 <div className="job-pill" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 11 }}>
-                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${job.laborRate ?? laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}</span>
-                  <span style={{ color: 'var(--loss)', fontWeight: 700 }}>{fmt$(c.labor + c.jobExps)}</span>
+                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${job.laborRate ?? laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}{c.commission > 0 ? ` + ${fmt$(c.commission)} commission` : ''}</span>
+                  <span style={{ color: 'var(--loss)', fontWeight: 700 }}>{fmt$(c.labor + c.jobExps + c.commission)}</span>
                 </div>
                 <div className="list-item-actions">
                   <button className="btn btn-sm btn-edit" onClick={() => openEdit(job)}>Edit</button>
@@ -1329,7 +1347,7 @@ function PieChart({ labels, data, colors, onSliceClick }) {
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────
-function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }) {
+function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, employees }) {
   const [period, setPeriod] = useState('week');
   const [selectedCat, setSelectedCat] = useState(null);
 
@@ -1350,7 +1368,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
   const filterEntries = (start, end) => entries.filter(e => e.date >= start && e.date <= end);
 
   const rollup = es => es.reduce((acc, e) => {
-    const c = calcEntry(e, jobs, laborRate, expenseItems);
+    const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
     acc.revenue  += c.totalRevenue;
     acc.expenses += c.totalExp;
     acc.profit   += c.profit;
@@ -1384,7 +1402,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
 
 
   const jobsSorted = useMemo(() => {
-    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate) })).sort((a, b) => b.margin - a.margin);
+    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate, employees) })).sort((a, b) => b.margin - a.margin);
   }, [jobs, laborRate]);
 
   return (
@@ -1532,10 +1550,18 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
             addItem('Job Expenses', { label: e.description || 'Job Expense', sub: j.client + ' - ' + j.dateStart, amount: e.amount });
           });
         });
+        // Employee commission for jobs in the selected period
+        periodJobs.forEach(j => {
+          const comm = commissionForJob(j, employees);
+          if (comm > 0) {
+            const emp = (employees || []).find(x => x.id === j.employeeId);
+            addItem('Commission', { label: (emp ? emp.name : 'Employee') + ' — ' + j.client, sub: emp.commissionRate + '% of ' + fmt$(j.revenue), amount: comm });
+          }
+        });
         // Labor from daily entries in the selected period
         const periodEntries = entries.filter(e => e.date >= periodStart && e.date <= periodEnd);
         periodEntries.forEach(e => {
-          const c = calcEntry(e, jobs, laborRate, expenseItems);
+          const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
           if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(e.laborRate ?? laborRate)||30) + '/hr', amount: c.labor });
         });
         // Fixed monthly bills - only counted in the Month view (they're monthly amounts)
@@ -1621,8 +1647,9 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
         const addC = (cat, amt) => { cats[cat] = (cats[cat] || 0) + (Number(amt) || 0); };
         (expenseItems || []).filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => addC(e.category || 'Misc', e.amount));
         periodJobs.forEach(j => (j.expenses || []).forEach(e => addC('Job Expenses', e.amount)));
+        periodJobs.forEach(j => addC('Commission', commissionForJob(j, employees)));
         entries.filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => {
-          const c = calcEntry(e, jobs, laborRate, expenseItems);
+          const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
           if (c.labor > 0) addC('Labor', c.labor);
         });
         if (period === 'month') (bills || []).forEach(b => addC(b.category || 'Misc', b.amount));
@@ -1747,7 +1774,7 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
   const exportCSV = () => {
     const rows = [['Date','Job Revenue','Additional Revenue','Total Revenue','Man Hours','Job Hours','Travel Hours','Labor Cost','Gas','Materials','Misc','Misc Note','Total Expenses','Net Profit','Margin %']];
     entries.forEach(e => {
-      const c = calcEntry(e, jobs, laborRate, expenseItems);
+      const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
       rows.push([e.date, c.jobRevenue.toFixed(2), c.additionalRevenue.toFixed(2), c.totalRevenue.toFixed(2), c.totalHours, c.jobHours.toFixed(2), c.travelHours.toFixed(2), c.labor.toFixed(2), e.gas||0, e.materials||0, e.misc||0, e.miscNote||'', c.expenseLogTotal.toFixed(2), c.totalExp.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1)]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
@@ -1759,10 +1786,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const exportJobsCSV = () => {
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Profit','Margin %','Status','Paid','Google Review','Employee']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Profit','Margin %','Status','Paid','Google Review','Employee']];
     jobs.forEach(j => {
-      const c = calcJob(j, laborRate);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', empName(j.employeeId)]);
+      const c = calcJob(j, laborRate, employees);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', empName(j.employeeId)]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2641,12 +2668,12 @@ function App() {
       )}
 
       <div className="content">
-        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
+        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} employees={employees} />}
         {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} />}
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
-        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
+        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} employees={employees} />}
         {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} syncState={syncState} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
