@@ -1526,7 +1526,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
 
         const pieLabels = Object.keys(cats);
         const pieData   = Object.values(cats);
-        const pieColors = ['#3182ce','#e53e3e','#d69e2e','#38a169','#805ad5','#dd6b20','#2b6cb0','#c53030'];
+        const pieColors = ['#3182ce','#e53e3e','#d69e2e','#38a169','#805ad5','#dd6b20','#2b6cb0','#c53030','#0d9488','#db2777','#65a30d','#7c3aed','#ea580c','#0891b2'];
         if (pieLabels.length === 0) return null;
         const total = pieData.reduce((a,b)=>a+b,0);
         const modalItems = selectedCat ? (catItems[selectedCat] || []) : [];
@@ -1628,7 +1628,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, employees, setEmployees, user, signIn, signOut, onImport, onClearAll }) {
+function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
   const [importMsg, setImportMsg] = useState('');
@@ -1786,6 +1786,35 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bil
             </div>
           </div>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Commission % is applied to the revenue of each job the employee completes, shown in the Crew tab.</p>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Expense Categories</div>
+        <div className="setting-row">
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Built-in categories (always available):</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+            {BUILTIN_CATEGORIES.map(c => (
+              <span key={c} className={`exp-cat-pill ${catMeta(c).cls}`}>{catMeta(c).icon} {c}</span>
+            ))}
+          </div>
+          {(expenseCategories || []).length > 0 ? (
+            <>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Your custom categories:</p>
+              {(expenseCategories || []).map(c => (
+                <div key={c} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>🏷️ {c}</span>
+                  <button className="btn btn-sm btn-danger" onClick={() => {
+                    if (confirm('Remove this category? Expenses already logged with it keep their label.')) {
+                      setExpenseCategories(prev => (prev || []).filter(x => x !== c));
+                    }
+                  }}>Remove</button>
+                </div>
+              ))}
+            </>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--muted)' }}>No custom categories yet. Add one while logging an expense in the Expenses tab (tap "+ New Category").</p>
+          )}
         </div>
       </div>
 
@@ -1970,10 +1999,20 @@ const CATEGORY_META = {
   'Equipment':  { icon: '🔧', cls: 'exp-cat-equipment' },
   'Misc':       { icon: '📦', cls: 'exp-cat-misc' },
 };
-const CATEGORIES = Object.keys(CATEGORY_META);
+const BUILTIN_CATEGORIES = Object.keys(CATEGORY_META);
+// Icon + style for any category, including custom ones (which get a default look)
+const catMeta = cat => CATEGORY_META[cat] || { icon: '🏷️', cls: 'exp-cat-misc' };
+// Full list = built-ins + any custom categories the user added
+const allCategories = custom => {
+  const seen = new Set(BUILTIN_CATEGORIES);
+  const extra = (custom || []).filter(c => c && !seen.has(c));
+  return [...BUILTIN_CATEGORIES, ...extra];
+};
 const EMPTY_EXP = { date: today(), description: '', amount: '', vendor: '', category: 'Misc' };
 
-function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
+function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expenseCategories, setExpenseCategories }) {
+  const [newCat, setNewCat]     = useState('');
+  const [showNewCat, setShowNewCat] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_EXP);
@@ -1982,6 +2021,15 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
   const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
+
+  const addCategory = () => {
+    const name = newCat.trim();
+    if (!name) return;
+    const exists = allCategories(expenseCategories).some(c => c.toLowerCase() === name.toLowerCase());
+    if (!exists) setExpenseCategories(prev => [...(prev || []), name]);
+    setForm(f => ({ ...f, category: name })); // auto-select the new (or existing) category
+    setNewCat(''); setShowNewCat(false);
+  };
 
   const ensureDailyEntry = date => {
     setEntries(prev => {
@@ -2059,8 +2107,22 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
             <div className="form-group">
               <label>Category</label>
               <select name="category" value={form.category} onChange={handleChange}>
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                {allCategories(expenseCategories).map(c => <option key={c}>{c}</option>)}
               </select>
+            </div>
+            <div className="form-group span2">
+              {!showNewCat ? (
+                <button type="button" className="btn btn-edit btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowNewCat(true)}>+ New Category</button>
+              ) : (
+                <div>
+                  <label>New Category Name</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="e.g. Insurance, Truck Repair" style={{ flex: 1 }} />
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '9px 16px', marginTop: 0 }} onClick={addCategory}>Add</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setShowNewCat(false); setNewCat(''); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="form-group span2">
               <label>Where from? (store / vendor)</label>
@@ -2106,7 +2168,7 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries }) {
               <span style={{ color: 'var(--loss)', fontSize: 14, fontFamily: 'Inter', fontWeight: 800 }}>{fmt$(dayTotal)}</span>
             </div>
             {items.map(item => {
-              const meta = CATEGORY_META[item.category] || CATEGORY_META['Misc'];
+              const meta = catMeta(item.category);
               return (
                 <div key={item.id} className="exp-list-item">
                   <div className="exp-icon-wrap">{meta.icon}</div>
@@ -2241,6 +2303,7 @@ function App() {
   const [expenseItems, setExpenseItems] = useState(() => LS.get('cpw_expenses', []));
   const [bills, setBills]           = useState(() => LS.get('cpw_bills', []));
   const [employees, setEmployees]   = useState(() => LS.get('cpw_employees', []));
+  const [expenseCategories, setExpenseCategories] = useState(() => LS.get('cpw_expenseCategories', []));
   const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
 
   // Auth + sync state
@@ -2268,6 +2331,7 @@ function App() {
           expenses:  d.expenses  || [],
           bills:     d.bills     || [],
           employees: d.employees || [],
+          expenseCategories: d.expenseCategories || [],
           laborRate: d.laborRate ?? 30,
         };
         const incomingJSON = JSON.stringify(incoming);
@@ -2281,6 +2345,7 @@ function App() {
         setExpenseItems(incoming.expenses);
         setBills(incoming.bills);
         setEmployees(incoming.employees);
+        setExpenseCategories(incoming.expenseCategories);
         setLaborRate(incoming.laborRate);
       } else {
         const seed = {
@@ -2289,6 +2354,7 @@ function App() {
           expenses:  LS.get('cpw_expenses',  []),
           bills:     LS.get('cpw_bills',     []),
           employees: LS.get('cpw_employees', []),
+          expenseCategories: LS.get('cpw_expenseCategories', []),
           laborRate: LS.get('cpw_laborRate', 30),
         };
         lastCloudJSON.current = JSON.stringify(seed);
@@ -2345,16 +2411,17 @@ function App() {
     LS.set('cpw_expenses',  expenseItems);
     LS.set('cpw_bills',     bills);
     LS.set('cpw_employees', employees);
+    LS.set('cpw_expenseCategories', expenseCategories);
     LS.set('cpw_laborRate', laborRate);
 
     if (!user || !cloudReady.current) return;
 
-    const data = { entries, jobs, expenses: expenseItems, bills, employees, laborRate };
+    const data = { entries, jobs, expenses: expenseItems, bills, employees, expenseCategories, laborRate };
     const json = JSON.stringify(data);
     if (json === lastCloudJSON.current) return; // nothing changed
 
     doCloudSave(user.uid, json);
-  }, [entries, jobs, expenseItems, bills, employees, laborRate, user]);
+  }, [entries, jobs, expenseItems, bills, employees, expenseCategories, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   const signOut = () => {
@@ -2372,6 +2439,7 @@ function App() {
     setExpenseItems(Array.isArray(d.expenses) ? d.expenses : []);
     setBills(Array.isArray(d.bills) ? d.bills : []);
     setEmployees(Array.isArray(d.employees) ? d.employees : []);
+    setExpenseCategories(Array.isArray(d.expenseCategories) ? d.expenseCategories : []);
     setLaborRate(Number(d.laborRate) || 30);
   };
 
@@ -2380,7 +2448,7 @@ function App() {
     if (!confirm('Delete ALL data on this device AND in the cloud? This cannot be undone.')) return;
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
     clearTimeout(retryTimer.current);
-    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_employees','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
+    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_employees','cpw_expenseCategories','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
     const done = () => window.location.reload();
     if (user) userDoc(user.uid).delete().then(done).catch(done);
     else done();
@@ -2443,11 +2511,11 @@ function App() {
       <div className="content">
         {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} />}
         {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} />}
-        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
+        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
