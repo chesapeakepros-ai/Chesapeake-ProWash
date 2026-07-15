@@ -617,6 +617,17 @@ const csvCell = v => {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 };
 
+// Scroll to the top so a just-opened add/edit form is actually visible.
+// Forms render at the top of the tab; without this, clicking Edit far down
+// the list leaves the form off-screen above the current scroll position.
+const scrollFormIntoView = () => {
+  try {
+    const c = document.querySelector('.content');
+    if (c) c.scrollTop = 0;
+    if (window.scrollTo) window.scrollTo(0, 0);
+  } catch (e) {}
+};
+
 // Jobs that count toward a given date — only Completed jobs count for revenue
 function jobsForDate(jobs, date) {
   return (jobs || []).filter(j => j.dateStart === date && j.status === 'Completed');
@@ -714,8 +725,8 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
   // Live preview uses current jobs
   const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems), [form, jobs, laborRate, expenseItems]);
 
-  const openNew  = () => { setEditId(null); const f = { ...EMPTY_ENTRY, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); };
-  const openEdit = entry => { setEditId(entry.id); const f = { ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); };
+  const openNew  = () => { setEditId(null); const f = { ...EMPTY_ENTRY, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
+  const openEdit = entry => { setEditId(entry.id); const f = { ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
   const closeForm = () => {
     if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
     setShowForm(false); setEditId(null); setForm(EMPTY_ENTRY);
@@ -958,8 +969,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
   const calc = useMemo(() => calcJob(form, laborRate), [form, laborRate]);
 
-  const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); };
-  const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); };
+  const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
+  const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const closeForm = () => {
     if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
     setShowForm(false); setEditJob(null); setFormErr('');
@@ -1875,8 +1886,8 @@ function BillsTab({ bills, setBills }) {
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
-  const openNew  = () => { setEditId(null); setForm(EMPTY_BILL); setFormErr(''); setShowForm(true); };
-  const openEdit = b  => { setEditId(b.id); setForm(b); setFormErr(''); setShowForm(true); };
+  const openNew  = () => { setEditId(null); setForm(EMPTY_BILL); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
+  const openEdit = b  => { setEditId(b.id); setForm(b); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_BILL); setFormErr(''); };
 
   const handleSubmit = () => {
@@ -2038,8 +2049,8 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expen
     });
   };
 
-  const openNew  = () => { setEditId(null); const f = { ...EMPTY_EXP, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setFormErr(''); setShowForm(true); };
-  const openEdit = item => { setEditId(item.id); setForm(item); origForm.current = JSON.stringify(item); setFormErr(''); setShowForm(true); };
+  const openNew  = () => { setEditId(null); const f = { ...EMPTY_EXP, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setFormErr(''); setShowNewCat(false); setNewCat(''); setShowForm(true); scrollFormIntoView(); };
+  const openEdit = item => { setEditId(item.id); setForm(item); origForm.current = JSON.stringify(item); setFormErr(''); setShowNewCat(false); setNewCat(''); setShowForm(true); scrollFormIntoView(); };
   const closeForm = () => {
     if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
     setShowForm(false); setEditId(null); setForm(EMPTY_EXP); setFormErr('');
