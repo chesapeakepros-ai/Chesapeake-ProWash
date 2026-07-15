@@ -642,9 +642,11 @@ function expensesForDate(expenseItems, date) {
   return (expenseItems || []).filter(e => e.date === date);
 }
 
-// Full calc for a daily entry, incorporating jobs + expense log on the same date
+// Full calc for a daily entry, incorporating jobs + expense log on the same date.
+// Uses the entry's own frozen laborRate if it has one, so past entries are
+// unaffected when the global rate changes; falls back to the current rate.
 function calcEntry(entry, jobs, laborRate, expenseItems) {
-  const rate = Number(laborRate) || 30;
+  const rate = Number(entry.laborRate ?? laborRate) || 30;
   const completedJobs = jobsForDate(jobs, entry.date);      // completed only — for revenue
   const allDayJobs    = allJobsForDate(jobs, entry.date);   // all jobs — for hours
 
@@ -679,7 +681,9 @@ function calcEntry(entry, jobs, laborRate, expenseItems) {
 }
 
 function calcJob(j, laborRate) {
-  const labor    = (Number(j.manHours) || 0) * (Number(laborRate) || 30);
+  // Uses the job's own frozen rate if set, so changing the global rate later
+  // doesn't alter this job's numbers; falls back to the current rate.
+  const labor    = (Number(j.manHours) || 0) * (Number(j.laborRate ?? laborRate) || 30);
   const revenue  = Number(j.revenue) || 0;
   const jobExps  = (j.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const profit   = revenue - labor - jobExps;
@@ -844,7 +848,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems }) {
               <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Revenue</span><span className="calc-value blue">{fmt$(liveCalc.totalRevenue)}</span></div>
 
               <div className="calc-section-label" style={{ marginTop: 10 }}>Expenses</div>
-              <div className="calc-row"><span className="calc-label">Labor ({fmtHrs(liveCalc.totalHours)} × ${laborRate})</span><span className="calc-value red">{fmt$(liveCalc.labor)}</span></div>
+              <div className="calc-row"><span className="calc-label">Labor ({fmtHrs(liveCalc.totalHours)} × ${form.laborRate ?? laborRate})</span><span className="calc-value red">{fmt$(liveCalc.labor)}</span></div>
               <div className="calc-row"><span className="calc-label">Gas / Fuel</span><span className="calc-value red">{fmt$(liveCalc.gas)}</span></div>
               <div className="calc-row"><span className="calc-label">Materials</span><span className="calc-value red">{fmt$(liveCalc.materials)}</span></div>
               <div className="calc-row"><span className="calc-label">Misc</span><span className="calc-value red">{fmt$(liveCalc.misc)}</span></div>
@@ -1153,7 +1157,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
           </div>
 
           <div className="calc-box">
-            <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
+            <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${form.laborRate ?? laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
             {calc.jobExps > 0 && <div className="calc-row"><span className="calc-label">Job Expenses</span><span className="calc-value red">−{fmt$(calc.jobExps)}</span></div>}
             <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
             <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
@@ -1216,7 +1220,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
                   </div>
                 </div>
                 <div className="job-pill" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 11 }}>
-                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}</span>
+                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${job.laborRate ?? laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}</span>
                   <span style={{ color: 'var(--loss)', fontWeight: 700 }}>{fmt$(c.labor + c.jobExps)}</span>
                 </div>
                 <div className="list-item-actions">
@@ -1532,7 +1536,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
         const periodEntries = entries.filter(e => e.date >= periodStart && e.date <= periodEnd);
         periodEntries.forEach(e => {
           const c = calcEntry(e, jobs, laborRate, expenseItems);
-          if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(laborRate)||30) + '/hr', amount: c.labor });
+          if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(e.laborRate ?? laborRate)||30) + '/hr', amount: c.labor });
         });
         // Fixed monthly bills - only counted in the Month view (they're monthly amounts)
         if (period === 'month') {
@@ -1702,7 +1706,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, signIn, signOut, onImport, onClearAll }) {
+function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
   const [importMsg, setImportMsg] = useState('');
@@ -1710,9 +1714,19 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bil
   const [empRate, setEmpRate] = useState('');
   const fileRef = useRef(null);
 
+  // Keep the input in sync if the saved rate loads/changes from the cloud
+  useEffect(() => { setRate(laborRate); }, [laborRate]);
+
   const handleSave = () => {
     const r = Number(rate);
-    if (r > 0) { setLaborRate(r); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    if (!(r > 0)) return;
+    // Freeze the OLD rate onto every existing job/entry that isn't already
+    // stamped, so changing the rate never alters anything entered before now.
+    const oldRate = Number(laborRate) || 30;
+    setJobs(prev => prev.map(j => (j.laborRate == null ? { ...j, laborRate: oldRate } : j)));
+    setEntries(prev => prev.map(e => (e.laborRate == null ? { ...e, laborRate: oldRate } : e)));
+    setLaborRate(r);
+    setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
   const addEmployee = () => {
@@ -1825,7 +1839,7 @@ function SettingsTab({ laborRate, setLaborRate, entries, jobs, expenseItems, bil
             </button>
           </div>
           <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 6 }}>
-            Covers $25/hr wage + payroll tax burden. Applied to all labor calculations including travel time.
+            Covers wage + payroll tax burden. Applied to labor going forward. Changing it will NOT affect jobs or days you already logged — those keep the rate they were entered at.
           </div>
         </div>
       </div>
@@ -2620,7 +2634,7 @@ function App() {
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
