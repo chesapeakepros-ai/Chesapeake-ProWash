@@ -1,5 +1,5 @@
 // Chesapeake Pro Wash - offline cache (network-first, cache fallback)
-const CACHE = 'cpw-v1';
+const CACHE = 'cpw-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 

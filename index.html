@@ -1712,6 +1712,7 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
   const [importMsg, setImportMsg] = useState('');
   const [empName, setEmpName] = useState('');
   const [empRate, setEmpRate] = useState('');
+  const [rateErr, setRateErr] = useState('');
   const fileRef = useRef(null);
 
   // Keep the input in sync if the saved rate loads/changes from the cloud
@@ -1719,12 +1720,15 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const handleSave = () => {
     const r = Number(rate);
-    if (!(r > 0)) return;
+    if (!(r > 0)) { setRateErr('Enter a rate greater than $0 (numbers only).'); return; }
+    setRateErr('');
     // Freeze the OLD rate onto every existing job/entry that isn't already
     // stamped, so changing the rate never alters anything entered before now.
-    const oldRate = Number(laborRate) || 30;
-    setJobs(prev => prev.map(j => (j.laborRate == null ? { ...j, laborRate: oldRate } : j)));
-    setEntries(prev => prev.map(e => (e.laborRate == null ? { ...e, laborRate: oldRate } : e)));
+    try {
+      const oldRate = Number(laborRate) || 30;
+      setJobs(prev => Array.isArray(prev) ? prev.map(j => (j && j.laborRate == null) ? { ...j, laborRate: oldRate } : j) : prev);
+      setEntries(prev => Array.isArray(prev) ? prev.map(e => (e && e.laborRate == null) ? { ...e, laborRate: oldRate } : e) : prev);
+    } catch (err) { /* even if freezing fails, still apply the new rate below */ }
     setLaborRate(r);
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
@@ -1832,12 +1836,16 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <div className="input-prefix" style={{ flex: 1 }}>
               <span>$</span>
-              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} min="1" step="0.50" />
+              <input type="number" inputMode="decimal" value={rate}
+              onChange={e => setRate(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+              min="1" step="0.50" />
             </div>
-            <button className="btn btn-primary" style={{ width: 'auto', padding: '9px 18px', marginTop: 0 }} onClick={handleSave}>
+            <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '9px 18px', marginTop: 0 }} onClick={handleSave}>
               {saved ? '✓ Saved' : 'Save'}
             </button>
           </div>
+          {rateErr && <div className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2', marginTop: 8 }}>{rateErr}</div>}
           <div style={{ fontSize: 12, color: '#a0aec0', marginTop: 6 }}>
             Covers wage + payroll tax burden. Applied to labor going forward. Changing it will NOT affect jobs or days you already logged — those keep the rate they were entered at.
           </div>
