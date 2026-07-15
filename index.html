@@ -1314,7 +1314,7 @@ function PieChart({ labels, data, colors, onSliceClick }) {
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────
-function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
+function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }) {
   const [period, setPeriod] = useState('week');
   const [chartMode, setChartMode] = useState('day');
   const [selectedCat, setSelectedCat] = useState(null);
@@ -1449,15 +1449,21 @@ function DashboardTab({ entries, jobs, laborRate, expenseItems, bills }) {
             <span style={{ color: '#b45309', fontSize: 15, fontFamily: 'Inter', fontWeight: 800 }}>{fmt$(unpaidTotal)}</span>
           </div>
           {unpaidJobs.map(j => (
-            <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
-              <div>
+            <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{j.client}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{j.description ? j.description + ' · ' : ''}{fmtDate(j.dateStart)}</div>
               </div>
-              <span style={{ fontSize: 14, fontWeight: 800, color: '#b45309' }}>{fmt$(j.revenue)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#b45309' }}>{fmt$(j.revenue)}</span>
+                <button className="btn btn-sm" style={{ background: '#22c55e', color: '#fff' }}
+                  onClick={() => setJobs(prev => prev.map(x => x.id === j.id ? { ...x, paid: true } : x))}>
+                  Mark Paid
+                </button>
+              </div>
             </div>
           ))}
-          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Completed jobs not yet marked Paid. Mark them paid in the Jobs tab.</p>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>Completed jobs not yet marked Paid. Tap Mark Paid, or edit the job in the Jobs tab.</p>
         </div>
       )}
 
@@ -2502,7 +2508,7 @@ function App() {
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} />}
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} />}
-        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
+        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} />}
         {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} jobs={jobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} user={user} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
