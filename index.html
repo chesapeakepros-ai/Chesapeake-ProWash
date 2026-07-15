@@ -1610,6 +1610,63 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills }
         );
       })()}
 
+      {/* Costs as % of Revenue */}
+      {(() => {
+        const revenue = statsToShow.revenue;
+        const cats = {};
+        const addC = (cat, amt) => { cats[cat] = (cats[cat] || 0) + (Number(amt) || 0); };
+        (expenseItems || []).filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => addC(e.category || 'Misc', e.amount));
+        periodJobs.forEach(j => (j.expenses || []).forEach(e => addC('Job Expenses', e.amount)));
+        entries.filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => {
+          const c = calcEntry(e, jobs, laborRate, expenseItems);
+          if (c.labor > 0) addC('Labor', c.labor);
+        });
+        if (period === 'month') (bills || []).forEach(b => addC(b.category || 'Misc', b.amount));
+
+        const rows = Object.entries(cats).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+        if (rows.length === 0) return null;
+        const totalCost = rows.reduce((s, [, v]) => s + v, 0);
+        const pctOf = amt => revenue > 0 ? (amt / revenue) * 100 : 0;
+        const totalPct = pctOf(totalCost);
+
+        return (
+          <div className="card">
+            <div className="card-title">Costs as % of Revenue</div>
+            {revenue > 0 ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>Every dollar of the {fmt$(revenue)} you earned {statsLabel.toLowerCase()}:</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Total costs</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: totalPct <= 100 ? 'var(--loss)' : 'var(--loss)' }}>{fmtPct(totalPct)}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginLeft: 6 }}>{fmt$(totalCost)}</span></span>
+                </div>
+                {rows.map(([cat, amt]) => {
+                  const pct = pctOf(amt);
+                  return (
+                    <div key={cat} style={{ marginBottom: 11 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600 }}>{cat}</span>
+                        <span><span style={{ fontWeight: 700 }}>{fmtPct(pct)}</span><span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 12 }}>{fmt$(amt)}</span></span>
+                      </div>
+                      <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ width: Math.min(100, pct) + '%', height: '100%', background: '#3182ce', borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 4, borderTop: '2px solid var(--border)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Kept as profit</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: totalPct <= 100 ? 'var(--profit)' : 'var(--loss)' }}>{fmtPct(100 - totalPct)}</span>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>No revenue recorded {statsLabel.toLowerCase()}, so costs can't be shown as a percentage of revenue. Costs this period total {fmt$(totalCost)}.</div>
+            )}
+          </div>
+        );
+      })()}
+
       {jobsSorted.length > 0 && (
         <div className="card">
           <div className="card-title">Job Profitability</div>
