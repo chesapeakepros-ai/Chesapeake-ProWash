@@ -2358,17 +2358,34 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expen
 // ─── Employees / Crew Tab ──────────────────────────────────────
 function EmployeesTab({ employees, jobs }) {
   const [period, setPeriod] = useState('week');
+  const [offset, setOffset] = useState(0); // 0 = current period, -1 = previous, etc.
 
-  // Period date range (same Sun–Sat week logic as the dashboard)
+  const changePeriod = p => { setPeriod(p); setOffset(0); };
+
+  // Period date range, shifted back by `offset` days/weeks/months
   const todayStr = today();
   const [ty, tm, td] = todayStr.split('-').map(Number);
-  const nowET = new Date(ty, tm - 1, td);
   const toStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const weekStart = new Date(nowET); weekStart.setDate(nowET.getDate() - nowET.getDay());
-  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-  const monthStart = `${ty}-${String(tm).padStart(2,'0')}-01`;
-  const periodStart = period === 'today' ? todayStr : period === 'week' ? toStr(weekStart) : monthStart;
-  const periodEnd   = period === 'today' ? todayStr : period === 'week' ? toStr(weekEnd)   : todayStr;
+
+  let periodStart, periodEnd, label;
+  if (period === 'today') {
+    const d = new Date(ty, tm - 1, td + offset);
+    periodStart = periodEnd = toStr(d);
+    label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  } else if (period === 'week') {
+    const base = new Date(ty, tm - 1, td);
+    const wkStart = new Date(base); wkStart.setDate(base.getDate() - base.getDay() + offset * 7);
+    const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 6);
+    periodStart = toStr(wkStart); periodEnd = toStr(wkEnd);
+    label = wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' + wkEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } else {
+    const mDate = new Date(ty, tm - 1 + offset, 1);
+    periodStart = toStr(new Date(mDate.getFullYear(), mDate.getMonth(), 1));
+    periodEnd   = toStr(new Date(mDate.getFullYear(), mDate.getMonth() + 1, 0));
+    label = mDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  // For the current/ongoing period, don't count days that haven't happened yet
+  if (periodEnd > todayStr) periodEnd = todayStr;
 
   // Completed jobs in period, grouped per employee
   const inPeriod = (jobs || []).filter(j =>
@@ -2387,14 +2404,24 @@ function EmployeesTab({ employees, jobs }) {
   const totalRev = rows.reduce((s, r) => s + r.revenue, 0) + unassignedRev;
   const totalComm = rows.reduce((s, r) => s + r.commission, 0);
 
-  const label = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
+  const unitName = period === 'today' ? 'day' : period === 'week' ? 'week' : 'month';
 
   return (
     <div>
       <div className="period-tabs">
-        {[['today','Today'],['week','Week'],['month','Month']].map(([v, l]) => (
-          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => setPeriod(v)}>{l}</button>
+        {[['today','Day'],['week','Week'],['month','Month']].map(([v, l]) => (
+          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => changePeriod(v)}>{l}</button>
         ))}
+      </div>
+
+      {/* Past-period navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+        <button className="btn btn-edit btn-sm" onClick={() => setOffset(o => o - 1)}>‹ Prev {unitName}</button>
+        <div style={{ textAlign: 'center', minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{label}</div>
+          {offset !== 0 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{-offset} {unitName}{-offset !== 1 ? 's' : ''} ago</div>}
+        </div>
+        <button className="btn btn-edit btn-sm" onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0} style={{ opacity: offset >= 0 ? 0.4 : 1 }}>Next {unitName} ›</button>
       </div>
 
       {(employees || []).length === 0 ? (
