@@ -1349,21 +1349,35 @@ function PieChart({ labels, data, colors, onSliceClick }) {
 // ─── Dashboard ──────────────────────────────────────────────────
 function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, employees }) {
   const [period, setPeriod] = useState('week');
+  const [offset, setOffset] = useState(0); // 0 = current period, -1 = previous, etc.
   const [selectedCat, setSelectedCat] = useState(null);
+  const changePeriod = p => { setPeriod(p); setOffset(0); };
 
-  const now = new Date();
   const todayStr = today();
-  // Parse today's ET date parts to avoid any UTC offset issues in week math
   const [tyear, tmonth, tday] = todayStr.split('-').map(Number);
-  const nowET = new Date(tyear, tmonth - 1, tday);
-  const dow = nowET.getDay(); // 0=Sunday
-  // Week is Sunday–Saturday
-  const weekStart = new Date(nowET); weekStart.setDate(nowET.getDate() - dow);
-  const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
   const toStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const weekStartStr = toStr(weekStart);
-  const weekEndStr   = toStr(weekEnd);
-  const monthStart   = `${tyear}-${String(tmonth).padStart(2,'0')}-01`;
+
+  // Period date range, shifted back by `offset` days/weeks/months (Sunday–Saturday weeks)
+  let periodStart, periodEnd, rangeLabel;
+  if (period === 'today') {
+    const d = new Date(tyear, tmonth - 1, tday + offset);
+    periodStart = periodEnd = toStr(d);
+    rangeLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  } else if (period === 'week') {
+    const base = new Date(tyear, tmonth - 1, tday);
+    const wkStart = new Date(base); wkStart.setDate(base.getDate() - base.getDay() + offset * 7);
+    const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 6);
+    periodStart = toStr(wkStart); periodEnd = toStr(wkEnd);
+    rangeLabel = wkStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' – ' + wkEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } else {
+    const mDate = new Date(tyear, tmonth - 1 + offset, 1);
+    periodStart = toStr(new Date(mDate.getFullYear(), mDate.getMonth(), 1));
+    periodEnd   = toStr(new Date(mDate.getFullYear(), mDate.getMonth() + 1, 0));
+    rangeLabel = mDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  }
+  if (periodEnd > todayStr) periodEnd = todayStr; // don't count days that haven't happened yet
+  const unitName = period === 'today' ? 'day' : period === 'week' ? 'week' : 'month';
+  const statsLabel = offset === 0 ? (period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month') : rangeLabel;
 
   const filterEntries = (start, end) => entries.filter(e => e.date >= start && e.date <= end);
 
@@ -1378,14 +1392,8 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
     return acc;
   }, { revenue: 0, expenses: 0, profit: 0, hours: 0, travel: 0, jobHours: 0 });
 
-  const todayStats = rollup(filterEntries(todayStr, todayStr));
-  const weekStats  = rollup(filterEntries(weekStartStr, weekEndStr));
-  const monthStats = rollup(filterEntries(monthStart, todayStr));
-  const statsToShow = period === 'today' ? todayStats : period === 'week' ? weekStats : monthStats;
-  const statsLabel  = period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month';
+  const statsToShow = rollup(filterEntries(periodStart, periodEnd));
 
-  const periodStart  = period === 'today' ? todayStr : period === 'week' ? weekStartStr : monthStart;
-  const periodEnd    = period === 'today' ? todayStr : period === 'week' ? weekEndStr   : todayStr;
   const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
   // Reviews only make sense for completed jobs - scheduled/cancelled jobs can't have one yet
   const completedPeriodJobs = periodJobs.filter(j => j.status === 'Completed');
@@ -1398,7 +1406,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
 
   // Monthly overhead from bills
   const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const monthNetAfterBills = monthStats.profit - totalBills;
+  const monthNetAfterBills = statsToShow.profit - totalBills;
 
 
   const jobsSorted = useMemo(() => {
@@ -1408,9 +1416,19 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
   return (
     <div>
       <div className="period-tabs">
-        {[['today','Today'],['week','Week'],['month','Month']].map(([v, l]) => (
-          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => setPeriod(v)}>{l}</button>
+        {[['today','Day'],['week','Week'],['month','Month']].map(([v, l]) => (
+          <button key={v} className={`period-tab ${period===v?'active':''}`} onClick={() => changePeriod(v)}>{l}</button>
         ))}
+      </div>
+
+      {/* Past-period navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+        <button className="btn btn-edit btn-sm" onClick={() => setOffset(o => o - 1)}>‹ Prev {unitName}</button>
+        <div style={{ textAlign: 'center', minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)' }}>{rangeLabel}</div>
+          {offset !== 0 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{-offset} {unitName}{-offset !== 1 ? 's' : ''} ago</div>}
+        </div>
+        <button className="btn btn-edit btn-sm" onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0} style={{ opacity: offset >= 0 ? 0.4 : 1 }}>Next {unitName} ›</button>
       </div>
 
       <div className="stat-grid">
@@ -1473,14 +1491,14 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
       )}
 
       {/* Tax set-aside suggestion - month view only */}
-      {period === 'month' && monthStats.profit > 0 && (
+      {period === 'month' && statsToShow.profit > 0 && (
         <div className="card" style={{ borderTopColor: 'var(--green)' }}>
           <div className="card-title" style={{ color: 'var(--green2)' }}>Tax Set-Aside</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, paddingRight: 12 }}>
               Suggested amount to set aside this month for self-employment + income tax (30% of net profit). Not tax advice - confirm with your tax preparer.
             </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--green2)', whiteSpace: 'nowrap' }}>{fmt$(monthStats.profit * 0.30)}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--green2)', whiteSpace: 'nowrap' }}>{fmt$(statsToShow.profit * 0.30)}</div>
           </div>
         </div>
       )}
@@ -1666,7 +1684,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
             {revenue > 0 ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>Every dollar of the {fmt$(revenue)} you earned {statsLabel.toLowerCase()}:</span>
+                  <span style={{ fontSize: 13, color: 'var(--muted)' }}>Every dollar of the {fmt$(revenue)} you brought in ({statsLabel}):</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>Total costs</span>
@@ -1692,7 +1710,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 13, color: 'var(--muted)' }}>No revenue recorded {statsLabel.toLowerCase()}, so costs can't be shown as a percentage of revenue. Costs this period total {fmt$(totalCost)}.</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>No revenue recorded for {statsLabel}, so costs can't be shown as a percentage of revenue. Costs this period total {fmt$(totalCost)}.</div>
             )}
           </div>
         );
