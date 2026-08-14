@@ -1429,7 +1429,18 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
     return acc;
   }, { revenue: 0, expenses: 0, profit: 0, hours: 0, travel: 0, jobHours: 0, overhead: 0 });
 
-  const statsToShow = rollup(filterEntries(periodStart, periodEnd));
+  // On the Month tab, charge the FULL monthly bills as overhead (not just the
+  // per-day share of days logged) — fixed bills are a whole-month obligation.
+  const applyMonthOverhead = (s) => {
+    if (period === 'month' && totalBills > 0) {
+      const topUp = totalBills - s.overhead;
+      s.expenses += topUp;
+      s.profit   -= topUp;
+      s.overhead  = totalBills;
+    }
+    return s;
+  };
+  const statsToShow = applyMonthOverhead(rollup(filterEntries(periodStart, periodEnd)));
 
   // ── Previous period (matched length) for comparison ──
   const startForOffset = (o) => {
@@ -1440,7 +1451,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
   const daySpan = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86400000) + 1;
   const prevStartDate = startForOffset(offset - 1);
   const prevEndDate = new Date(prevStartDate); prevEndDate.setDate(prevStartDate.getDate() + daySpan - 1);
-  const prevStats = rollup(filterEntries(toStr(prevStartDate), toStr(prevEndDate)));
+  const prevStats = applyMonthOverhead(rollup(filterEntries(toStr(prevStartDate), toStr(prevEndDate))));
 
   // Percent change vs previous period; null when there's nothing to compare to
   const pctChange = (cur, prev) => (prev === 0 ? null : ((cur - prev) / Math.abs(prev)) * 100);
@@ -1667,7 +1678,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
           if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(e.laborRate ?? laborRate)||30) + '/hr', amount: c.labor });
         });
         // Fixed overhead actually counted this period (daily nut × days logged)
-        if (periodOverhead > 0) addItem('Overhead', { label: 'Fixed bills (daily share)', sub: fmt$(dailyNut) + '/day × days logged', amount: periodOverhead });
+        if (periodOverhead > 0) addItem('Overhead', { label: 'Fixed bills', sub: period === 'month' ? 'full monthly bills' : fmt$(dailyNut) + '/day × days logged', amount: periodOverhead });
 
         const pieLabels = Object.keys(cats);
         const pieData   = Object.values(cats);
