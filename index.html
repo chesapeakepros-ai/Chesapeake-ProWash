@@ -670,11 +670,11 @@ function calcEntry(entry, jobs, laborRate, expenseItems, employees, dailyOverhea
   const dayExpItems = expensesForDate(expenseItems, entry.date);
   const expenseLogTotal = dayExpItems.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
-  // Job-specific expenses on this date (counted so daily + dashboard match the pie chart)
-  const jobExpTotal = allDayJobs.reduce((s, j) => s + (j.expenses || []).reduce((t, e) => t + (Number(e.amount) || 0), 0), 0);
+  // Job-specific expenses on this date — completed jobs only, to match revenue basis
+  const jobExpTotal = completedJobs.reduce((s, j) => s + (j.expenses || []).reduce((t, e) => t + (Number(e.amount) || 0), 0), 0);
 
-  // Employee commission on this date's jobs, counted as an expense
-  const commissionTotal = allDayJobs.reduce((s, j) => s + commissionForJob(j, employees), 0);
+  // Employee commission on this date's completed jobs (matches the Crew tab & revenue)
+  const commissionTotal = completedJobs.reduce((s, j) => s + commissionForJob(j, employees), 0);
 
   // Daily share of fixed monthly overhead (bills ÷ 30), counted as an expense for the day
   const overhead = Number(dailyOverhead) || 0;
@@ -1657,25 +1657,28 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
           const cat = e.category || 'Misc';
           addItem(cat, { label: e.description || 'Expense', sub: e.vendor || e.date, amount: e.amount });
         });
-        // Job-specific expenses for jobs in the selected period
-        periodJobs.forEach(j => {
+        // Job-specific expenses for completed jobs in the selected period (matches the Expenses stat)
+        completedPeriodJobs.forEach(j => {
           (j.expenses || []).forEach(e => {
             addItem('Job Expenses', { label: e.description || 'Job Expense', sub: j.client + ' - ' + j.dateStart, amount: e.amount });
           });
         });
-        // Employee commission for jobs in the selected period
-        periodJobs.forEach(j => {
+        // Employee commission for completed jobs in the selected period
+        completedPeriodJobs.forEach(j => {
           const comm = commissionForJob(j, employees);
           if (comm > 0) {
             const emp = (employees || []).find(x => x.id === j.employeeId);
             addItem('Commission', { label: (emp ? emp.name : 'Employee') + ' — ' + j.client, sub: emp.commissionRate + '% of ' + fmt$(j.revenue), amount: comm });
           }
         });
-        // Labor from daily entries in the selected period
+        // Labor + daily quick-entry costs (gas / materials / misc) from entries in the period
         const periodEntries = entries.filter(e => e.date >= periodStart && e.date <= periodEnd);
         periodEntries.forEach(e => {
           const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
           if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(e.laborRate ?? laborRate)||30) + '/hr', amount: c.labor });
+          if (c.gas > 0)       addItem('Gas/Fuel',  { label: fmtDate(e.date), sub: 'daily log', amount: c.gas });
+          if (c.materials > 0) addItem('Materials', { label: fmtDate(e.date), sub: 'daily log', amount: c.materials });
+          if (c.misc > 0)      addItem('Misc',      { label: fmtDate(e.date) + (e.miscNote ? ' · ' + e.miscNote : ''), sub: 'daily log', amount: c.misc });
         });
         // Fixed overhead actually counted this period (daily nut × days logged)
         if (periodOverhead > 0) addItem('Overhead', { label: 'Fixed bills', sub: period === 'month' ? 'full monthly bills' : fmt$(dailyNut) + '/day × days logged', amount: periodOverhead });
@@ -1755,11 +1758,14 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
         const cats = {};
         const addC = (cat, amt) => { cats[cat] = (cats[cat] || 0) + (Number(amt) || 0); };
         (expenseItems || []).filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => addC(e.category || 'Misc', e.amount));
-        periodJobs.forEach(j => (j.expenses || []).forEach(e => addC('Job Expenses', e.amount)));
-        periodJobs.forEach(j => addC('Commission', commissionForJob(j, employees)));
+        completedPeriodJobs.forEach(j => (j.expenses || []).forEach(e => addC('Job Expenses', e.amount)));
+        completedPeriodJobs.forEach(j => addC('Commission', commissionForJob(j, employees)));
         entries.filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => {
           const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
-          if (c.labor > 0) addC('Labor', c.labor);
+          if (c.labor > 0)      addC('Labor', c.labor);
+          if (c.gas > 0)        addC('Gas/Fuel', c.gas);
+          if (c.materials > 0)  addC('Materials', c.materials);
+          if (c.misc > 0)       addC('Misc', c.misc);
         });
         if (periodOverhead > 0) addC('Overhead', periodOverhead);
 
