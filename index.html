@@ -690,12 +690,19 @@ function commissionForJob(job, employees) {
   return (Number(job.revenue) || 0) * (Number(emp.commissionRate) || 0) / 100;
 }
 
-function calcJob(j, laborRate, employees) {
+// Expense-log items assigned to a job from the Expenses tab (via jobId)
+function assignedExpensesForJob(job, expenseItems) {
+  return (expenseItems || []).filter(e => e.jobId === job.id);
+}
+
+function calcJob(j, laborRate, employees, expenseItems) {
   // Uses the job's own frozen rate if set, so changing the global rate later
   // doesn't alter this job's numbers; falls back to the current rate.
   const labor    = (Number(j.manHours) || 0) * (Number(j.laborRate ?? laborRate) || 30);
   const revenue  = Number(j.revenue) || 0;
-  const jobExps  = (j.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const embeddedExps = (j.expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const assignedExps = assignedExpensesForJob(j, expenseItems).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const jobExps  = embeddedExps + assignedExps;
   const commission = commissionForJob(j, employees);
   const profit   = revenue - labor - jobExps - commission;
   const margin   = revenue > 0 ? (profit / revenue) * 100 : 0;
@@ -976,7 +983,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
 // ─── Jobs Tab ──────────────────────────────────────────────────
 const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeId: '' };
 
-function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
+function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems }) {
   const [showForm, setShowForm]   = useState(false);
   const [editJob, setEditJob]     = useState(null);
   const [form, setForm]           = useState(EMPTY_JOB);
@@ -988,7 +995,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
-  const calc = useMemo(() => calcJob(form, laborRate, employees), [form, laborRate, employees]);
+  const calc = useMemo(() => calcJob(form, laborRate, employees, expenseItems), [form, laborRate, employees, expenseItems]);
 
   const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
@@ -1038,8 +1045,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
   const sorted = useMemo(() => {
     return [...jobs].sort((a, b) => {
       let av, bv;
-      if (sortKey === 'profit')   { av = calcJob(a, laborRate, employees).profit;  bv = calcJob(b, laborRate, employees).profit;  }
-      else if (sortKey === 'margin') { av = calcJob(a, laborRate, employees).margin; bv = calcJob(b, laborRate, employees).margin; }
+      if (sortKey === 'profit')   { av = calcJob(a, laborRate, employees, expenseItems).profit;  bv = calcJob(b, laborRate, employees, expenseItems).profit;  }
+      else if (sortKey === 'margin') { av = calcJob(a, laborRate, employees, expenseItems).margin; bv = calcJob(b, laborRate, employees, expenseItems).margin; }
       else if (sortKey === 'revenue') { av = Number(a.revenue)||0; bv = Number(b.revenue)||0; }
       else { av = a.dateStart; bv = b.dateStart; }
       return sortDir * (av > bv ? 1 : av < bv ? -1 : 0);
@@ -1134,7 +1141,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
           {/* Job Expenses */}
           <div style={{ marginTop: 16 }}>
             <div className="calc-section-label">Job Expenses</div>
-            {(form.expenses || []).length === 0 && (
+            {(form.expenses || []).length === 0 && !(editJob && assignedExpensesForJob(editJob, expenseItems).length > 0) && (
               <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 8px' }}>No expenses added yet.</p>
             )}
             {(form.expenses || []).map(e => (
@@ -1146,6 +1153,15 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
                   <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--red)' }}>−{fmt$(e.amount)}</span>
                   <button className="btn btn-sm btn-danger" onClick={() => removeJobExpense(e.id)}>Remove</button>
                 </div>
+              </div>
+            ))}
+            {editJob && assignedExpensesForJob(editJob, expenseItems).map(e => (
+              <div key={e.id} className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                <div>
+                  <div className="exp-desc">{e.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>from Expenses tab · {e.category}{e.vendor ? ' · ' + e.vendor : ''}</div>
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--red)' }}>−{fmt$(e.amount)}</span>
               </div>
             ))}
             <div className="form-grid" style={{ marginTop: 8 }}>
@@ -1208,7 +1224,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees }) {
             </button>
           </div>
           {sorted.map(job => {
-            const c = calcJob(job, laborRate, employees);
+            const c = calcJob(job, laborRate, employees, expenseItems);
             const statusColor = job.status === 'Completed' ? 'badge-green' : job.status === 'In Progress' ? 'badge-blue' : job.status === 'Cancelled' ? 'badge-orange' : 'badge-yellow';
             return (
               <div key={job.id} className="list-item">
@@ -1410,7 +1426,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
 
 
   const jobsSorted = useMemo(() => {
-    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate, employees) })).sort((a, b) => b.margin - a.margin);
+    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate, employees, expenseItems) })).sort((a, b) => b.margin - a.margin);
   }, [jobs, laborRate]);
 
   return (
@@ -1806,7 +1822,7 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
     const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Profit','Margin %','Status','Paid','Google Review','Employee']];
     jobs.forEach(j => {
-      const c = calcJob(j, laborRate, employees);
+      const c = calcJob(j, laborRate, employees, expenseItems);
       rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', empName(j.employeeId)]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
@@ -2185,9 +2201,9 @@ const allCategories = custom => {
   const extra = (custom || []).filter(c => c && !seen.has(c));
   return [...BUILTIN_CATEGORIES, ...extra];
 };
-const EMPTY_EXP = { date: today(), description: '', amount: '', vendor: '', category: 'Misc' };
+const EMPTY_EXP = { date: today(), description: '', amount: '', vendor: '', category: 'Misc', jobId: '' };
 
-function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expenseCategories, setExpenseCategories }) {
+function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expenseCategories, setExpenseCategories, jobs }) {
   const [newCat, setNewCat]     = useState('');
   const [showNewCat, setShowNewCat] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -2305,8 +2321,18 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expen
               <label>Where from? (store / vendor)</label>
               <input name="vendor" value={form.vendor} onChange={handleChange} placeholder="e.g. Home Depot, Amazon…" />
             </div>
+            <div className="form-group span2">
+              <label>Assign to Job (optional)</label>
+              <select name="jobId" value={form.jobId || ''} onChange={handleChange}>
+                <option value="">— Not tied to a job —</option>
+                {[...(jobs || [])].sort((a,b) => (b.dateStart||'').localeCompare(a.dateStart||'')).map(j => (
+                  <option key={j.id} value={j.id}>{j.client}{j.dateStart ? ` · ${fmtDate(j.dateStart)}` : ''}</option>
+                ))}
+              </select>
+              {(jobs || []).length === 0 && <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Add jobs in the Jobs tab to assign expenses to them.</span>}
+            </div>
           </div>
-          <p className="info-note">This expense will automatically appear in the Daily Entry for {fmtDate(form.date) || 'this date'}.</p>
+          <p className="info-note">This expense appears in the Daily Entry for {fmtDate(form.date) || 'this date'}{form.jobId ? ", and is deducted from the assigned job's profit" : ''}.</p>
           {formErr && <p className="info-note" style={{ color: '#b91c1c', borderColor: '#fca5a5', background: '#fee2e2' }}>{formErr}</p>}
           <button className="btn btn-primary" onClick={handleSubmit}>{editId ? 'Save Changes' : 'Log Expense'}</button>
         </div>
@@ -2354,6 +2380,7 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expen
                     <div className="exp-meta">
                       <span className={`exp-cat-pill ${meta.cls}`}>{item.category}</span>
                       {item.vendor && <span style={{ marginLeft: 6 }}>📍 {item.vendor}</span>}
+                      {item.jobId && (jobs || []).find(j => j.id === item.jobId) && <span style={{ marginLeft: 6, color: 'var(--navy3)', fontWeight: 600 }}>🧾 {(jobs.find(j => j.id === item.jobId) || {}).client}</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -2714,8 +2741,8 @@ function App() {
 
       <div className="content">
         {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} employees={employees} />}
-        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} />}
-        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
+        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} expenseItems={expenseItems} />}
+        {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} jobs={jobs} />}
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
         {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} employees={employees} />}
