@@ -645,7 +645,7 @@ function expensesForDate(expenseItems, date) {
 // Full calc for a daily entry, incorporating jobs + expense log on the same date.
 // Uses the entry's own frozen laborRate if it has one, so past entries are
 // unaffected when the global rate changes; falls back to the current rate.
-function calcEntry(entry, jobs, laborRate, expenseItems, employees) {
+function calcEntry(entry, jobs, laborRate, expenseItems, employees, dailyOverhead) {
   const rate = Number(entry.laborRate ?? laborRate) || 30;
   const completedJobs = jobsForDate(jobs, entry.date);      // completed only — for revenue
   const allDayJobs    = allJobsForDate(jobs, entry.date);   // all jobs — for hours
@@ -676,11 +676,14 @@ function calcEntry(entry, jobs, laborRate, expenseItems, employees) {
   // Employee commission on this date's jobs, counted as an expense
   const commissionTotal = allDayJobs.reduce((s, j) => s + commissionForJob(j, employees), 0);
 
-  const totalExp = labor + gas + materials + misc + expenseLogTotal + jobExpTotal + commissionTotal;
+  // Daily share of fixed monthly overhead (bills ÷ 30), counted as an expense for the day
+  const overhead = Number(dailyOverhead) || 0;
+
+  const totalExp = labor + gas + materials + misc + expenseLogTotal + jobExpTotal + commissionTotal + overhead;
   const profit   = totalRevenue - totalExp;
   const margin   = totalRevenue > 0 ? (profit / totalRevenue) * 100 : 0;
 
-  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, commissionTotal, dayExpItems, totalExp, profit, margin };
+  return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, commissionTotal, overhead, dayExpItems, totalExp, profit, margin };
 }
 
 // Commission owed to the employee assigned to a job = job revenue × their rate.
@@ -736,7 +739,8 @@ function MoneyInput({ label, name, value, onChange, placeholder = "0.00", hint }
 // ─── Daily Entry Tab ────────────────────────────────────────────
 const EMPTY_ENTRY = { date: today(), additionalRevenue: '', manHours: '', gas: '', materials: '', misc: '', miscNote: '' };
 
-function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employees }) {
+function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employees, bills }) {
+  const dailyNut = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0) / 30;
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState(null);
   const [form, setForm]         = useState(EMPTY_ENTRY);
@@ -745,7 +749,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
 
   // Live preview uses current jobs
-  const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems, employees), [form, jobs, laborRate, expenseItems, employees]);
+  const liveCalc = useMemo(() => calcEntry(form, jobs, laborRate, expenseItems, employees, dailyNut), [form, jobs, laborRate, expenseItems, employees, dailyNut]);
 
   const openNew  = () => { setEditId(null); const f = { ...EMPTY_ENTRY, date: today() }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
   const openEdit = entry => { setEditId(entry.id); const f = { ...entry, additionalRevenue: entry.additionalRevenue ?? entry.revenue ?? '' }; setForm(f); origForm.current = JSON.stringify(f); setShowForm(true); scrollFormIntoView(); };
@@ -880,6 +884,12 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
                   <span className="calc-value red">{fmt$(liveCalc.jobExpTotal)}</span>
                 </div>
               )}
+              {liveCalc.overhead > 0 && (
+                <div className="calc-row">
+                  <span className="calc-label">Overhead <span className="auto-badge">AUTO</span></span>
+                  <span className="calc-value red">{fmt$(liveCalc.overhead)}</span>
+                </div>
+              )}
               <div className="calc-row total-row"><span className="calc-label" style={{ fontWeight: 600 }}>Total Expenses</span><span className="calc-value red">{fmt$(liveCalc.totalExp)}</span></div>
 
               <div className="calc-section-label" style={{ marginTop: 10 }}>Bottom Line</div>
@@ -895,7 +905,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
       )}
 
       {[...entries].sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(entry => {
-        const c = calcEntry(entry, jobs, laborRate, expenseItems, employees);
+        const c = calcEntry(entry, jobs, laborRate, expenseItems, employees, dailyNut);
         const allDayJobs = allJobsForDate(jobs, entry.date);
         return (
           <div key={entry.id} className="card">
@@ -938,6 +948,12 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 12 }}>
                 <span style={{ color: 'var(--navy2)', fontWeight: 600 }}>👤 Employee Commission</span>
                 <span style={{ color: 'var(--loss)', fontWeight: 700 }}>−{fmt$(c.commissionTotal)}</span>
+              </div>
+            )}
+            {c.overhead > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 12 }}>
+                <span style={{ color: 'var(--navy2)', fontWeight: 600 }}>🏢 Overhead (daily share of bills)</span>
+                <span style={{ color: 'var(--loss)', fontWeight: 700 }}>−{fmt$(c.overhead)}</span>
               </div>
             )}
 
@@ -1395,18 +1411,23 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
   const unitName = period === 'today' ? 'day' : period === 'week' ? 'week' : 'month';
   const statsLabel = offset === 0 ? (period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month') : rangeLabel;
 
+  // Fixed overhead: total monthly bills, and the daily share (÷30) folded into each day's expenses
+  const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  const dailyNut = totalBills / 30;
+
   const filterEntries = (start, end) => entries.filter(e => e.date >= start && e.date <= end);
 
   const rollup = es => es.reduce((acc, e) => {
-    const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
+    const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
     acc.revenue  += c.totalRevenue;
     acc.expenses += c.totalExp;
     acc.profit   += c.profit;
     acc.hours    += c.totalHours;
     acc.travel   += c.travelHours;
     acc.jobHours += c.jobHours;
+    acc.overhead += c.overhead;
     return acc;
-  }, { revenue: 0, expenses: 0, profit: 0, hours: 0, travel: 0, jobHours: 0 });
+  }, { revenue: 0, expenses: 0, profit: 0, hours: 0, travel: 0, jobHours: 0, overhead: 0 });
 
   const statsToShow = rollup(filterEntries(periodStart, periodEnd));
 
@@ -1447,14 +1468,9 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
   const unpaidJobs  = jobs.filter(j => j.status === 'Completed' && !j.paid);
   const unpaidTotal = unpaidJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
 
-  // Monthly overhead from bills
-  const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const monthNetAfterBills = statsToShow.profit - totalBills;
-
-  // Break-even: fixed overhead per day, prorated to the days in the viewed period
-  const dailyNut = totalBills / 30;
-  const periodOverhead = dailyNut * daySpan;
-  const afterOverhead = statsToShow.profit - periodOverhead;
+  // Overhead actually counted in this period (daily nut × days that have an entry),
+  // already included in statsToShow.expenses / statsToShow.profit above.
+  const periodOverhead = statsToShow.overhead;
 
 
   const jobsSorted = useMemo(() => {
@@ -1515,18 +1531,18 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
         </div>
       </div>
 
-      {/* Break-even: daily overhead nut + whether this period cleared it */}
+      {/* Break-even: daily overhead nut (now folded into each day's expenses) */}
       {totalBills > 0 && period !== 'month' && (
         <div className="card" style={{ borderTopColor: '#3182ce' }}>
           <div className="card-title">Break-Even</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 13, color: 'var(--muted)', paddingRight: 12 }}>What you need to clear every day just to cover fixed overhead (bills).</div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', paddingRight: 12 }}>Fixed overhead added to each day's expenses. You clear this much per day just to break even.</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--loss)', whiteSpace: 'nowrap' }}>{fmt$(dailyNut)}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>/day</span></div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 8, borderTop: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 13, fontWeight: 700 }}>{statsLabel} vs {fmt$(periodOverhead)} overhead</span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: afterOverhead >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
-              {afterOverhead >= 0 ? '✓ Cleared by ' + fmt$(afterOverhead) : '✗ Short by ' + fmt$(-afterOverhead)}
+            <span style={{ fontSize: 13, fontWeight: 700 }}>Overhead counted {statsLabel.toLowerCase()}: {fmt$(periodOverhead)}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: statsToShow.profit >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+              {statsToShow.profit >= 0 ? '✓ Above break-even' : '✗ Below break-even'}
             </span>
           </div>
         </div>
@@ -1583,10 +1599,10 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
               <div style={{ fontSize: 22, fontWeight: 800, color: '#fca5a5', marginTop: 4 }}>{fmt$(totalBills)}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,.72)', marginTop: 2, fontWeight: 500 }}>{bills.length} bill{bills.length !== 1 ? 's' : ''} / mo</div>
             </div>
-            <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: `3px solid ${monthNetAfterBills >= 0 ? '#4ade80' : '#f87171'}` }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.88)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Net After Bills</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: monthNetAfterBills >= 0 ? '#6ee7a0' : '#fca5a5', marginTop: 4 }}>{fmt$(monthNetAfterBills)}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.72)', marginTop: 2, fontWeight: 500 }}>job profit − bills</div>
+            <div style={{ background: 'var(--navy)', borderRadius: 11, padding: '12px 14px', borderBottom: '3px solid #4ade80' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.88)', textTransform: 'uppercase', letterSpacing: '.5px', fontFamily: 'Oswald, sans-serif' }}>Overhead Counted</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#fca5a5', marginTop: 4 }}>{fmt$(periodOverhead)}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.72)', marginTop: 2, fontWeight: 500 }}>already in Net Profit above</div>
             </div>
           </div>
 
@@ -1647,15 +1663,11 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
         // Labor from daily entries in the selected period
         const periodEntries = entries.filter(e => e.date >= periodStart && e.date <= periodEnd);
         periodEntries.forEach(e => {
-          const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
+          const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
           if (c.labor > 0) addItem('Labor', { label: fmtDate(e.date), sub: fmtHrs(c.totalHours) + ' x $' + (Number(e.laborRate ?? laborRate)||30) + '/hr', amount: c.labor });
         });
-        // Fixed monthly bills - only counted in the Month view (they're monthly amounts)
-        if (period === 'month') {
-          (bills || []).forEach(b => {
-            addItem(b.category || 'Misc', { label: b.name || 'Bill', sub: (b.vendor ? b.vendor + ' · ' : '') + 'monthly bill', amount: b.amount });
-          });
-        }
+        // Fixed overhead actually counted this period (daily nut × days logged)
+        if (periodOverhead > 0) addItem('Overhead', { label: 'Fixed bills (daily share)', sub: fmt$(dailyNut) + '/day × days logged', amount: periodOverhead });
 
         const pieLabels = Object.keys(cats);
         const pieData   = Object.values(cats);
@@ -1735,10 +1747,10 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
         periodJobs.forEach(j => (j.expenses || []).forEach(e => addC('Job Expenses', e.amount)));
         periodJobs.forEach(j => addC('Commission', commissionForJob(j, employees)));
         entries.filter(e => e.date >= periodStart && e.date <= periodEnd).forEach(e => {
-          const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
+          const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
           if (c.labor > 0) addC('Labor', c.labor);
         });
-        if (period === 'month') (bills || []).forEach(b => addC(b.category || 'Misc', b.amount));
+        if (periodOverhead > 0) addC('Overhead', periodOverhead);
 
         const rows = Object.entries(cats).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
         if (rows.length === 0) return null;
@@ -1858,10 +1870,11 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
   };
 
   const exportCSV = () => {
-    const rows = [['Date','Job Revenue','Additional Revenue','Total Revenue','Man Hours','Job Hours','Travel Hours','Labor Cost','Gas','Materials','Misc','Misc Note','Total Expenses','Net Profit','Margin %']];
+    const dailyNut = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0) / 30;
+    const rows = [['Date','Job Revenue','Additional Revenue','Total Revenue','Man Hours','Job Hours','Travel Hours','Labor Cost','Gas','Materials','Misc','Misc Note','Overhead','Total Expenses','Net Profit','Margin %']];
     entries.forEach(e => {
-      const c = calcEntry(e, jobs, laborRate, expenseItems, employees);
-      rows.push([e.date, c.jobRevenue.toFixed(2), c.additionalRevenue.toFixed(2), c.totalRevenue.toFixed(2), c.totalHours, c.jobHours.toFixed(2), c.travelHours.toFixed(2), c.labor.toFixed(2), e.gas||0, e.materials||0, e.misc||0, e.miscNote||'', c.expenseLogTotal.toFixed(2), c.totalExp.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1)]);
+      const c = calcEntry(e, jobs, laborRate, expenseItems, employees, dailyNut);
+      rows.push([e.date, c.jobRevenue.toFixed(2), c.additionalRevenue.toFixed(2), c.totalRevenue.toFixed(2), c.totalHours, c.jobHours.toFixed(2), c.travelHours.toFixed(2), c.labor.toFixed(2), e.gas||0, e.materials||0, e.misc||0, e.miscNote||'', c.overhead.toFixed(2), c.totalExp.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1)]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2792,7 +2805,7 @@ function App() {
       )}
 
       <div className="content">
-        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} employees={employees} />}
+        {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} employees={employees} bills={bills} />}
         {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} expenseItems={expenseItems} />}
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} jobs={jobs} />}
         {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
