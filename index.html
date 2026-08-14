@@ -1410,6 +1410,33 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
 
   const statsToShow = rollup(filterEntries(periodStart, periodEnd));
 
+  // ── Previous period (matched length) for comparison ──
+  const startForOffset = (o) => {
+    if (period === 'today') return new Date(tyear, tmonth - 1, tday + o);
+    if (period === 'week')  { const b = new Date(tyear, tmonth - 1, tday); const w = new Date(b); w.setDate(b.getDate() - b.getDay() + o * 7); return w; }
+    return new Date(tyear, tmonth - 1 + o, 1);
+  };
+  const daySpan = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86400000) + 1;
+  const prevStartDate = startForOffset(offset - 1);
+  const prevEndDate = new Date(prevStartDate); prevEndDate.setDate(prevStartDate.getDate() + daySpan - 1);
+  const prevStats = rollup(filterEntries(toStr(prevStartDate), toStr(prevEndDate)));
+
+  // Percent change vs previous period; null when there's nothing to compare to
+  const pctChange = (cur, prev) => (prev === 0 ? null : ((cur - prev) / Math.abs(prev)) * 100);
+  // Renders a small ▲/▼ delta badge inside a dark stat card
+  const deltaBadge = (cur, prev, goodWhenUp = true) => {
+    const pct = pctChange(cur, prev);
+    if (pct === null) return null;
+    if (Math.abs(pct) < 0.5) return <div className="stat-sub" style={{ marginTop: 1 }}>~ even vs prev {unitName}</div>;
+    const up = pct > 0;
+    const good = goodWhenUp ? up : !up;
+    return (
+      <div style={{ marginTop: 1, fontSize: 11, fontWeight: 700, color: good ? '#6ee7a0' : '#fca5a5' }}>
+        {up ? '▲' : '▼'} {Math.abs(pct).toFixed(0)}% <span style={{ color: 'rgba(255,255,255,.5)', fontWeight: 500 }}>vs prev {unitName}</span>
+      </div>
+    );
+  };
+
   const periodJobs   = jobs.filter(j => j.dateStart >= periodStart && j.dateStart <= periodEnd);
   // Reviews only make sense for completed jobs - scheduled/cancelled jobs can't have one yet
   const completedPeriodJobs = periodJobs.filter(j => j.status === 'Completed');
@@ -1423,6 +1450,11 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
   // Monthly overhead from bills
   const totalBills = (bills || []).reduce((s, b) => s + (Number(b.amount) || 0), 0);
   const monthNetAfterBills = statsToShow.profit - totalBills;
+
+  // Break-even: fixed overhead per day, prorated to the days in the viewed period
+  const dailyNut = totalBills / 30;
+  const periodOverhead = dailyNut * daySpan;
+  const afterOverhead = statsToShow.profit - periodOverhead;
 
 
   const jobsSorted = useMemo(() => {
@@ -1452,16 +1484,19 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
           <div className="stat-label">Revenue</div>
           <div className="stat-value blue">{fmt$(statsToShow.revenue)}</div>
           <div className="stat-sub">{statsLabel}</div>
+          {deltaBadge(statsToShow.revenue, prevStats.revenue, true)}
         </div>
         <div className="stat-card">
           <div className="stat-label">Expenses</div>
           <div className="stat-value red">{fmt$(statsToShow.expenses)}</div>
           <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.expenses/statsToShow.revenue*100) + ' of revenue' : statsLabel}</div>
+          {deltaBadge(statsToShow.expenses, prevStats.expenses, false)}
         </div>
         <div className="stat-card">
           <div className="stat-label">Net Profit</div>
           <div className={`stat-value ${statsToShow.profit >= 0 ? 'green' : 'red'}`}>{fmt$(statsToShow.profit)}</div>
           <div className="stat-sub">{statsToShow.revenue > 0 ? fmtPct(statsToShow.profit/statsToShow.revenue*100) + ' margin' : '–'}</div>
+          {deltaBadge(statsToShow.profit, prevStats.profit, true)}
         </div>
         <div className="stat-card">
           <div className="stat-label">Total Hours</div>
@@ -1479,6 +1514,23 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
           <div className="stat-sub">{completedPeriodJobs.length > 0 ? `${reviewPct}% of ${completedPeriodJobs.length} completed` : 'No completed jobs'}</div>
         </div>
       </div>
+
+      {/* Break-even: daily overhead nut + whether this period cleared it */}
+      {totalBills > 0 && period !== 'month' && (
+        <div className="card" style={{ borderTopColor: '#3182ce' }}>
+          <div className="card-title">Break-Even</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 13, color: 'var(--muted)', paddingRight: 12 }}>What you need to clear every day just to cover fixed overhead (bills).</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--loss)', whiteSpace: 'nowrap' }}>{fmt$(dailyNut)}<span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>/day</span></div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, marginTop: 8, borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>{statsLabel} vs {fmt$(periodOverhead)} overhead</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: afterOverhead >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+              {afterOverhead >= 0 ? '✓ Cleared by ' + fmt$(afterOverhead) : '✗ Short by ' + fmt$(-afterOverhead)}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Money owed - unpaid completed jobs */}
       {unpaidJobs.length > 0 && (
