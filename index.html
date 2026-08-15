@@ -686,11 +686,23 @@ function calcEntry(entry, jobs, laborRate, expenseItems, employees, dailyOverhea
   return { jobRevenue, jobHours, additionalRevenue, totalRevenue, totalHours, travelHours, labor, gas, materials, misc, expenseLogTotal, jobExpTotal, overhead, dayExpItems, totalExp, profit, margin };
 }
 
-// Commission owed to the employee assigned to a job = job revenue × their rate.
-function commissionForJob(job, employees) {
-  const emp = (employees || []).find(e => e.id === job.employeeId);
+// Employees assigned to a job — new multi-tech `employeeIds`, or legacy single `employeeId`.
+function jobEmployeeIds(job) {
+  if (Array.isArray(job.employeeIds)) return job.employeeIds.filter(Boolean);
+  return job.employeeId ? [job.employeeId] : [];
+}
+// One tech's commission on a job: their rate applied to an equal share of the revenue.
+function commissionForEmployeeOnJob(job, empId, employees) {
+  const ids = jobEmployeeIds(job);
+  if (!ids.includes(empId)) return 0;
+  const emp = (employees || []).find(e => e.id === empId);
   if (!emp) return 0;
-  return (Number(job.revenue) || 0) * (Number(emp.commissionRate) || 0) / 100;
+  return ((Number(job.revenue) || 0) / ids.length) * (Number(emp.commissionRate) || 0) / 100;
+}
+// Total commission for a job = revenue split equally among assigned techs, each at their own rate.
+function commissionForJob(job, employees) {
+  const ids = jobEmployeeIds(job);
+  return ids.reduce((s, id) => s + commissionForEmployeeOnJob(job, id, employees), 0);
 }
 
 // Expense-log items assigned to a job from the Expenses tab (via jobId)
@@ -991,7 +1003,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeId: '' };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [] };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems }) {
   const [showForm, setShowForm]   = useState(false);
@@ -1008,7 +1020,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
   const calc = useMemo(() => calcJob(form, laborRate, employees, expenseItems), [form, laborRate, employees, expenseItems]);
 
   const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
-  const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [] }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
+  const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [], employeeIds: jobEmployeeIds(j) }; delete f.employeeId; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const closeForm = () => {
     if (JSON.stringify(form) !== origForm.current && !confirm('Discard unsaved changes?')) return;
     setShowForm(false); setEditJob(null); setFormErr('');
@@ -1105,13 +1117,30 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
               </select>
             </div>
             <div className="form-group span2">
-              <label>Done By (Employee)</label>
-              <select name="employeeId" value={form.employeeId || ''} onChange={handleChange}>
-                <option value="">— Unassigned —</option>
-                {(employees || []).map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-              </select>
-              {(employees || []).length === 0 && (
+              <label>Done By (tap all who worked it)</label>
+              {(employees || []).length === 0 ? (
                 <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Add employees in the Settings tab to assign them.</span>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(employees || []).map(emp => {
+                      const on = (form.employeeIds || []).includes(emp.id);
+                      return (
+                        <button key={emp.id} type="button"
+                          onClick={() => setForm(f => {
+                            const ids = f.employeeIds || [];
+                            return { ...f, employeeIds: on ? ids.filter(id => id !== emp.id) : [...ids, emp.id] };
+                          })}
+                          style={{ background: on ? '#22c55e' : 'var(--border)', color: on ? '#fff' : 'var(--navy2)', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                          {on ? '✓ ' : ''}{emp.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(form.employeeIds || []).length > 1 && (
+                    <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 4, fontWeight: 600 }}>Commission splits equally across {(form.employeeIds || []).length} techs.</span>
+                  )}
+                </>
               )}
             </div>
             <div className="form-group" style={{ justifyContent: 'flex-end' }}>
@@ -1202,7 +1231,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
           <div className="calc-box">
             <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${form.laborRate ?? laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
             {calc.jobExps > 0 && <div className="calc-row"><span className="calc-label">Job Expenses</span><span className="calc-value red">−{fmt$(calc.jobExps)}</span></div>}
-            {calc.commission > 0 && <div className="calc-row"><span className="calc-label">Commission {(() => { const e = (employees||[]).find(x=>x.id===form.employeeId); return e ? `(${e.commissionRate}%)` : ''; })()}</span><span className="calc-value red">−{fmt$(calc.commission)}</span></div>}
+            {calc.commission > 0 && <div className="calc-row"><span className="calc-label">Commission{(form.employeeIds || []).length > 1 ? ` (split ${form.employeeIds.length} ways)` : ''}</span><span className="calc-value red">−{fmt$(calc.commission)}</span></div>}
             <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
             <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
           </div>
@@ -1244,8 +1273,9 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                     <div className="job-date">{job.description} · {fmtDate(job.dateStart)}</div>
                     <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
                       <span className={`badge ${statusColor}`}>{job.status}</span>
-                      {job.employeeId && (employees || []).find(e => e.id === job.employeeId) &&
-                        <span className="badge badge-blue">👤 {(employees.find(e => e.id === job.employeeId) || {}).name}</span>}
+                      {jobEmployeeIds(job).map(id => (employees || []).find(e => e.id === id)).filter(Boolean).map(e => (
+                        <span key={e.id} className="badge badge-blue">👤 {e.name}</span>
+                      ))}
                       {job.paid
                         ? <span className="badge badge-green">💰 Paid</span>
                         : <span className="badge badge-yellow">⏳ Unpaid</span>}
@@ -1888,10 +1918,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const exportJobsCSV = () => {
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Profit','Margin %','Status','Paid','Google Review','Employee']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Profit','Margin %','Status','Paid','Google Review','Employees']];
     jobs.forEach(j => {
       const c = calcJob(j, laborRate, employees, expenseItems);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', empName(j.employeeId)]);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2531,16 +2561,18 @@ function EmployeesTab({ employees, jobs }) {
     j.status === 'Completed' && j.dateStart >= periodStart && j.dateStart <= periodEnd);
 
   const rows = (employees || []).map(emp => {
-    const empJobs = inPeriod.filter(j => j.employeeId === emp.id);
+    const empJobs = inPeriod.filter(j => jobEmployeeIds(j).includes(emp.id));
+    // Revenue of jobs they worked on (full job value); commission is their split share
     const revenue = empJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
-    const commission = revenue * (Number(emp.commissionRate) || 0) / 100;
+    const commission = empJobs.reduce((s, j) => s + commissionForEmployeeOnJob(j, emp.id, employees), 0);
     return { emp, jobCount: empJobs.length, revenue, commission };
-  }).sort((a, b) => b.revenue - a.revenue);
+  }).sort((a, b) => b.commission - a.commission);
 
-  const unassigned = inPeriod.filter(j => !j.employeeId || !(employees || []).some(e => e.id === j.employeeId));
+  const unassigned = inPeriod.filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)));
   const unassignedRev = unassigned.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
 
-  const totalRev = rows.reduce((s, r) => s + r.revenue, 0) + unassignedRev;
+  // Totals count each completed job once (a job shared by 2 techs isn't double-counted)
+  const totalRev = inPeriod.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
   const totalComm = rows.reduce((s, r) => s + r.commission, 0);
 
   const unitName = period === 'today' ? 'day' : period === 'week' ? 'week' : 'month';
