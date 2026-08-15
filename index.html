@@ -2075,10 +2075,36 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
             💾 Backup All Data (JSON)
           </button>
           <button className="btn btn-edit btn-sm btn" style={{ width: '100%' }} onClick={() => fileRef.current && fileRef.current.click()}>
-            📤 Restore from Backup
+            📤 Restore from Backup File
           </button>
           <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleImportFile} />
           {importMsg && <p className="info-note" style={{ marginTop: 8 }}>{importMsg}</p>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Automatic Backups</div>
+        <div className="setting-row">
+          {(() => {
+            const backups = LS.get('cpw_backups', []).slice().reverse();
+            if (backups.length === 0) return <p style={{ fontSize: 13, color: 'var(--muted)' }}>The app now keeps a daily snapshot of your data on this device automatically. They'll appear here as you use it, so you always have something to restore from.</p>;
+            return (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>Saved automatically on this device. Tap Restore to roll back to that day's data.</p>
+                {backups.map(b => (
+                  <div key={b.day} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{fmtDate(b.day)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{(b.data.entries||[]).length} days · {(b.data.jobs||[]).length} jobs · {(b.data.expenses||[]).length} expenses</div>
+                    </div>
+                    <button className="btn btn-sm btn-edit" onClick={() => {
+                      if (confirm('Restore your data to how it was on ' + fmtDate(b.day) + '? This replaces current data on all your devices.')) onImport(b.data);
+                    }}>Restore</button>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -2629,8 +2655,33 @@ function App() {
   const isSaving                  = useRef(false);
   const retryPending              = useRef(false);
   const retryTimer                = useRef(null);
+  const localUpdatedAt            = useRef(LS.get('cpw_updatedAt', 0)); // version of our local data
 
   const userDoc = (uid) => db.collection('users').doc(uid).collection('data').doc('main');
+
+  // How many records a dataset holds — used to refuse a shrink/wipe from a stale copy
+  const recordCount = d => (d.entries||[]).length + (d.jobs||[]).length + (d.expenses||[]).length + (d.bills||[]).length + (d.employees||[]).length;
+  const localSnapshot = () => ({
+    entries:   LS.get('cpw_entries',   []),
+    jobs:      LS.get('cpw_jobs',      []),
+    expenses:  LS.get('cpw_expenses',  []),
+    bills:     LS.get('cpw_bills',     []),
+    employees: LS.get('cpw_employees', []),
+    expenseCategories: LS.get('cpw_expenseCategories', []),
+    laborRate: LS.get('cpw_laborRate', 30),
+  });
+  // Keep one rolling snapshot per day (last 14 days) so data is always recoverable locally.
+  // Never let a smaller (possibly clobbered) snapshot replace a bigger one from the same day.
+  const autoBackup = (data) => {
+    try {
+      const all = LS.get('cpw_backups', []);
+      const existingToday = all.find(b => b.day === today());
+      if (existingToday && recordCount(existingToday.data) > recordCount(data)) return;
+      const list = all.filter(b => b.day !== today());
+      list.push({ day: today(), ts: Date.now(), data });
+      LS.set('cpw_backups', list.slice(-14));
+    } catch (e) {}
+  };
 
   const subscribeToCloud = (uid) => {
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
@@ -2652,26 +2703,41 @@ function App() {
         // overwrite unsaved changes), or if this is our own write echoing back.
         if (isSaving.current || retryPending.current) return;
         if (incomingJSON === lastCloudJSON.current) return;
-        lastCloudJSON.current = incomingJSON;
-        setEntries(incoming.entries);
-        setJobs(incoming.jobs);
-        setExpenseItems(incoming.expenses);
-        setBills(incoming.bills);
-        setEmployees(incoming.employees);
-        setExpenseCategories(incoming.expenseCategories);
-        setLaborRate(incoming.laborRate);
+
+        // ── Anti-clobber guard ──
+        // Only adopt the cloud copy if it's genuinely newer than our local data.
+        // A stale/emptier copy (older version, or fewer records at the same version)
+        // must NOT overwrite newer local data — instead we re-push ours to heal the cloud.
+        const cloudTs = Number(d.updatedAt) || 0;
+        const localTs = Number(localUpdatedAt.current) || 0;
+        const local   = localSnapshot();
+        const localHasData = recordCount(local) > 0;
+        const adopt = !localHasData
+          || cloudTs > localTs
+          || (cloudTs === localTs && recordCount(incoming) >= recordCount(local));
+
+        if (adopt) {
+          lastCloudJSON.current = incomingJSON;
+          localUpdatedAt.current = cloudTs;
+          LS.set('cpw_updatedAt', cloudTs);
+          setEntries(incoming.entries);
+          setJobs(incoming.jobs);
+          setExpenseItems(incoming.expenses);
+          setBills(incoming.bills);
+          setEmployees(incoming.employees);
+          setExpenseCategories(incoming.expenseCategories);
+          setLaborRate(incoming.laborRate);
+        } else {
+          // Cloud is older/smaller than our local — keep ours and push it back up.
+          const json = JSON.stringify(local);
+          const ts = Math.max(localTs, cloudTs) + 1;
+          doCloudSave(uid, json, ts);
+        }
       } else {
-        const seed = {
-          entries:   LS.get('cpw_entries',   []),
-          jobs:      LS.get('cpw_jobs',      []),
-          expenses:  LS.get('cpw_expenses',  []),
-          bills:     LS.get('cpw_bills',     []),
-          employees: LS.get('cpw_employees', []),
-          expenseCategories: LS.get('cpw_expenseCategories', []),
-          laborRate: LS.get('cpw_laborRate', 30),
-        };
-        lastCloudJSON.current = JSON.stringify(seed);
-        userDoc(uid).set(seed);
+        // No cloud doc yet — seed it from local data
+        const seed = localSnapshot();
+        const ts = Math.max(Number(localUpdatedAt.current) || 0, Date.now());
+        doCloudSave(uid, JSON.stringify(seed), ts);
       }
     });
   };
@@ -2691,15 +2757,18 @@ function App() {
 
   // Cloud save with retry. lastCloudJSON is only updated after a CONFIRMED
   // write, so a failed save gets retried instead of silently lost.
-  const doCloudSave = (uidVal, json) => {
+  const doCloudSave = (uidVal, contentJson, ts) => {
     clearTimeout(retryTimer.current);
     isSaving.current = true;
+    localUpdatedAt.current = ts;          // our local data is now this version
+    LS.set('cpw_updatedAt', ts);
     setSyncState('saving');
     try {
-      // JSON round-trip strips undefined values that Firestore rejects
-      userDoc(uidVal).set(JSON.parse(json))
+      // Write the content plus its version stamp
+      const payload = { ...JSON.parse(contentJson), updatedAt: ts };
+      userDoc(uidVal).set(payload)
         .then(() => {
-          lastCloudJSON.current = json;
+          lastCloudJSON.current = contentJson;
           isSaving.current = false;
           retryPending.current = false;
           setSyncState('synced');
@@ -2708,7 +2777,7 @@ function App() {
           isSaving.current = false;
           retryPending.current = true;
           setSyncState('error');
-          retryTimer.current = setTimeout(() => doCloudSave(uidVal, json), 8000);
+          retryTimer.current = setTimeout(() => doCloudSave(uidVal, contentJson, ts), 8000);
         });
     } catch(e) {
       isSaving.current = false;
@@ -2727,13 +2796,14 @@ function App() {
     LS.set('cpw_expenseCategories', expenseCategories);
     LS.set('cpw_laborRate', laborRate);
 
-    if (!user || !cloudReady.current) return;
-
     const data = { entries, jobs, expenses: expenseItems, bills, employees, expenseCategories, laborRate };
     const json = JSON.stringify(data);
-    if (json === lastCloudJSON.current) return; // nothing changed
+    if (json === lastCloudJSON.current) return; // nothing changed since last sync
 
-    doCloudSave(user.uid, json);
+    autoBackup(data); // keep a rolling local snapshot every time data changes
+
+    if (!user || !cloudReady.current) return;
+    doCloudSave(user.uid, json, Date.now());
   }, [entries, jobs, expenseItems, bills, employees, expenseCategories, laborRate, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
