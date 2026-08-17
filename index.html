@@ -710,13 +710,25 @@ function tipForEmployeeOnJob(job, empId) {
   if (!ids.includes(empId) || ids.length === 0) return 0;
   return (Number(job.tip) || 0) / ids.length;
 }
+// Bonus paid when the tech collects a Google review on a job (only if a tech is assigned).
+function reviewBonusForJob(job, reviewBonus) {
+  if (!job.googleReview) return 0;
+  if (jobEmployeeIds(job).length === 0) return 0;
+  return Number(reviewBonus) || 0;
+}
+// One tech's share of that review bonus (split if multiple techs worked the job).
+function reviewBonusForEmployeeOnJob(job, empId, reviewBonus) {
+  const ids = jobEmployeeIds(job);
+  if (!ids.includes(empId) || ids.length === 0) return 0;
+  return reviewBonusForJob(job, reviewBonus) / ids.length;
+}
 
 // Expense-log items assigned to a job from the Expenses tab (via jobId)
 function assignedExpensesForJob(job, expenseItems) {
   return (expenseItems || []).filter(e => e.jobId === job.id);
 }
 
-function calcJob(j, laborRate, employees, expenseItems) {
+function calcJob(j, laborRate, employees, expenseItems, reviewBonus) {
   // Uses the job's own frozen rate if set, so changing the global rate later
   // doesn't alter this job's numbers; falls back to the current rate.
   const labor    = (Number(j.manHours) || 0) * (Number(j.laborRate ?? laborRate) || 30);
@@ -725,9 +737,10 @@ function calcJob(j, laborRate, employees, expenseItems) {
   const assignedExps = assignedExpensesForJob(j, expenseItems).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const jobExps  = embeddedExps + assignedExps;
   const commission = commissionForJob(j, employees);
-  const profit   = revenue - labor - jobExps - commission;
+  const bonus    = reviewBonusForJob(j, reviewBonus);
+  const profit   = revenue - labor - jobExps - commission - bonus;
   const margin   = revenue > 0 ? (profit / revenue) * 100 : 0;
-  return { labor, jobExps, commission, profit, margin };
+  return { labor, jobExps, commission, bonus, profit, margin };
 }
 
 // ─── Icons ─────────────────────────────────────────────────────
@@ -1011,7 +1024,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
 // ─── Jobs Tab ──────────────────────────────────────────────────
 const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [], tip: '' };
 
-function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems }) {
+function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems, reviewBonus }) {
   const [showForm, setShowForm]   = useState(false);
   const [editJob, setEditJob]     = useState(null);
   const [form, setForm]           = useState(EMPTY_JOB);
@@ -1023,7 +1036,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
   const origForm = useRef('');
 
   const handleChange = e => { const { name, value } = e.target; setForm(f => ({ ...f, [name]: value })); };
-  const calc = useMemo(() => calcJob(form, laborRate, employees, expenseItems), [form, laborRate, employees, expenseItems]);
+  const calc = useMemo(() => calcJob(form, laborRate, employees, expenseItems, reviewBonus), [form, laborRate, employees, expenseItems, reviewBonus]);
 
   const openNew  = () => { setEditJob(null); const f = { ...EMPTY_JOB, dateStart: today() }; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
   const openEdit = j  => { setEditJob(j); const f = { ...EMPTY_JOB, ...j, expenses: j.expenses || [], employeeIds: jobEmployeeIds(j) }; delete f.employeeId; setForm(f); origForm.current = JSON.stringify(f); setExpDesc(''); setExpAmt(''); setFormErr(''); setShowForm(true); scrollFormIntoView(); };
@@ -1073,8 +1086,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
   const sorted = useMemo(() => {
     return [...jobs].sort((a, b) => {
       let av, bv;
-      if (sortKey === 'profit')   { av = calcJob(a, laborRate, employees, expenseItems).profit;  bv = calcJob(b, laborRate, employees, expenseItems).profit;  }
-      else if (sortKey === 'margin') { av = calcJob(a, laborRate, employees, expenseItems).margin; bv = calcJob(b, laborRate, employees, expenseItems).margin; }
+      if (sortKey === 'profit')   { av = calcJob(a, laborRate, employees, expenseItems, reviewBonus).profit;  bv = calcJob(b, laborRate, employees, expenseItems, reviewBonus).profit;  }
+      else if (sortKey === 'margin') { av = calcJob(a, laborRate, employees, expenseItems, reviewBonus).margin; bv = calcJob(b, laborRate, employees, expenseItems, reviewBonus).margin; }
       else if (sortKey === 'revenue') { av = Number(a.revenue)||0; bv = Number(b.revenue)||0; }
       else { av = a.dateStart; bv = b.dateStart; }
       return sortDir * (av > bv ? 1 : av < bv ? -1 : 0);
@@ -1253,6 +1266,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
             <div className="calc-row"><span className="calc-label">Labor ({form.manHours || 0}h × ${form.laborRate ?? laborRate})</span><span className="calc-value blue">{fmt$(calc.labor)}</span></div>
             {calc.jobExps > 0 && <div className="calc-row"><span className="calc-label">Job Expenses</span><span className="calc-value red">−{fmt$(calc.jobExps)}</span></div>}
             {calc.commission > 0 && <div className="calc-row"><span className="calc-label">Commission{(form.employeeIds || []).length > 1 ? ` (split ${form.employeeIds.length} ways)` : ''}</span><span className="calc-value red">−{fmt$(calc.commission)}</span></div>}
+            {calc.bonus > 0 && <div className="calc-row"><span className="calc-label">⭐ Review Bonus</span><span className="calc-value red">−{fmt$(calc.bonus)}</span></div>}
             <div className="calc-row"><span className="calc-label">Job Profit</span><span className={`calc-value ${calc.profit >= 0 ? 'green' : 'red'}`}>{fmt$(calc.profit)}</span></div>
             <div className="calc-row"><span className="calc-label">Profit Margin</span><span className={`calc-value ${calc.margin >= 0 ? 'green' : 'red'}`}>{fmtPct(calc.margin)}</span></div>
           </div>
@@ -1284,7 +1298,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
             </button>
           </div>
           {sorted.map(job => {
-            const c = calcJob(job, laborRate, employees, expenseItems);
+            const c = calcJob(job, laborRate, employees, expenseItems, reviewBonus);
             const statusColor = job.status === 'Completed' ? 'badge-green' : job.status === 'In Progress' ? 'badge-blue' : job.status === 'Cancelled' ? 'badge-orange' : 'badge-yellow';
             return (
               <div key={job.id} className="list-item">
@@ -1316,8 +1330,8 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                   </div>
                 </div>
                 <div className="job-pill" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, fontSize: 11 }}>
-                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${job.laborRate ?? laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}{c.commission > 0 ? ` + ${fmt$(c.commission)} commission` : ''}</span>
-                  <span style={{ color: 'var(--loss)', fontWeight: 700 }}>{fmt$(c.labor + c.jobExps + c.commission)}</span>
+                  <span style={{ fontWeight: 600 }}>Labor ({fmtHrs(job.manHours)} × ${job.laborRate ?? laborRate}/hr){c.jobExps > 0 ? ` + ${fmt$(c.jobExps)} expenses` : ''}{c.commission > 0 ? ` + ${fmt$(c.commission)} commission` : ''}{c.bonus > 0 ? ` + ${fmt$(c.bonus)} review bonus` : ''}</span>
+                  <span style={{ color: 'var(--loss)', fontWeight: 700 }}>{fmt$(c.labor + c.jobExps + c.commission + c.bonus)}</span>
                 </div>
                 <div className="list-item-actions">
                   <button className="btn btn-sm btn-edit" onClick={() => openEdit(job)}>Edit</button>
@@ -1425,7 +1439,7 @@ function PieChart({ labels, data, colors, onSliceClick }) {
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────
-function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, employees }) {
+function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, employees, reviewBonus }) {
   const [period, setPeriod] = useState('week');
   const [offset, setOffset] = useState(0); // 0 = current period, -1 = previous, etc.
   const [selectedCat, setSelectedCat] = useState(null);
@@ -1531,7 +1545,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
 
 
   const jobsSorted = useMemo(() => {
-    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate, employees, expenseItems) })).sort((a, b) => b.margin - a.margin);
+    return [...jobs].map(j => ({ ...j, ...calcJob(j, laborRate, employees, expenseItems, reviewBonus) })).sort((a, b) => b.margin - a.margin);
   }, [jobs, laborRate]);
 
   return (
@@ -1886,7 +1900,7 @@ function DashboardTab({ entries, jobs, setJobs, laborRate, expenseItems, bills, 
 }
 
 // ─── Settings ──────────────────────────────────────────────────
-function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, user, syncState, signIn, signOut, onImport, onClearAll }) {
+function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJobs, expenseItems, bills, employees, setEmployees, expenseCategories, setExpenseCategories, reviewBonus, setReviewBonus, user, syncState, signIn, signOut, onImport, onClearAll }) {
   const [rate, setRate] = useState(laborRate);
   const [saved, setSaved] = useState(false);
   const [importMsg, setImportMsg] = useState('');
@@ -1940,10 +1954,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const exportJobsCSV = () => {
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Tip','Profit','Margin %','Status','Paid','Google Review','Employees']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Review Bonus','Tip','Profit','Margin %','Status','Paid','Google Review','Employees']];
     jobs.forEach(j => {
-      const c = calcJob(j, laborRate, employees, expenseItems);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), (Number(j.tip)||0).toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
+      const c = calcJob(j, laborRate, employees, expenseItems, reviewBonus);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.bonus.toFixed(2), (Number(j.tip)||0).toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2068,6 +2082,17 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
             </div>
           </div>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Commission % is applied to the revenue of each job the employee completes, shown in the Crew tab.</p>
+
+          <div className="setting-label" style={{ marginTop: 14 }}>Google Review Bonus</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="input-prefix" style={{ flex: 1 }}>
+              <span>$</span>
+              <input type="number" inputMode="decimal" value={reviewBonus}
+                onChange={e => setReviewBonus(e.target.value === '' ? '' : Number(e.target.value))}
+                min="0" step="1" />
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>Paid to the tech when a job is marked ⭐ Reviewed. Split evenly if more than one tech worked the job.</p>
         </div>
       </div>
 
@@ -2547,7 +2572,7 @@ function ExpensesTab({ expenseItems, setExpenseItems, entries, setEntries, expen
 }
 
 // ─── Employees / Crew Tab ──────────────────────────────────────
-function EmployeesTab({ employees, jobs }) {
+function EmployeesTab({ employees, jobs, reviewBonus }) {
   const [period, setPeriod] = useState('week');
   const [offset, setOffset] = useState(0); // 0 = current period, -1 = previous, etc.
 
@@ -2588,8 +2613,10 @@ function EmployeesTab({ employees, jobs }) {
     const revenue = empJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
     const commission = empJobs.reduce((s, j) => s + commissionForEmployeeOnJob(j, emp.id, employees), 0);
     const tips = empJobs.reduce((s, j) => s + tipForEmployeeOnJob(j, emp.id), 0);
-    return { emp, jobCount: empJobs.length, revenue, commission, tips };
-  }).sort((a, b) => (b.commission + b.tips) - (a.commission + a.tips));
+    const bonuses = empJobs.reduce((s, j) => s + reviewBonusForEmployeeOnJob(j, emp.id, reviewBonus), 0);
+    const reviewCount = empJobs.filter(j => j.googleReview).length;
+    return { emp, jobCount: empJobs.length, revenue, commission, tips, bonuses, reviewCount };
+  }).sort((a, b) => (b.commission + b.tips + b.bonuses) - (a.commission + a.tips + a.bonuses));
 
   const unassigned = inPeriod.filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)));
   const unassignedRev = unassigned.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
@@ -2598,6 +2625,9 @@ function EmployeesTab({ employees, jobs }) {
   const totalRev = inPeriod.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
   const totalComm = rows.reduce((s, r) => s + r.commission, 0);
   const totalTips = rows.reduce((s, r) => s + r.tips, 0);
+  const totalBonuses = rows.reduce((s, r) => s + r.bonuses, 0);
+  // Count each reviewed job once (a job shared by 2 techs is still one review)
+  const totalReviews = inPeriod.filter(j => j.googleReview && jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id))).length;
   // Tips on completed jobs with nobody assigned — flagged so they don't get lost
   const unassignedTips = inPeriod
     .filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)))
@@ -2645,9 +2675,14 @@ function EmployeesTab({ employees, jobs }) {
               <div className="stat-sub">{label}</div>
             </div>
             <div className="stat-card">
+              <div className="stat-label">Review Bonuses</div>
+              <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt$(totalBonuses)}</div>
+              <div className="stat-sub">{totalReviews} review{totalReviews !== 1 ? 's' : ''} × {fmt$(reviewBonus)}</div>
+            </div>
+            <div className="stat-card">
               <div className="stat-label">Total Payout</div>
-              <div className="stat-value" style={{ color: '#fcd34d' }}>{fmt$(totalComm + totalTips)}</div>
-              <div className="stat-sub">commission + tips</div>
+              <div className="stat-value" style={{ color: '#fcd34d' }}>{fmt$(totalComm + totalTips + totalBonuses)}</div>
+              <div className="stat-sub">commission + tips + bonuses</div>
             </div>
           </div>
 
@@ -2657,22 +2692,23 @@ function EmployeesTab({ employees, jobs }) {
             </div>
           )}
 
-          {rows.map(({ emp, jobCount, revenue, commission, tips }) => (
+          {rows.map(({ emp, jobCount, revenue, commission, tips, bonuses, reviewCount }) => (
             <div key={emp.id} className="card">
               <div className="list-item-header">
                 <div>
                   <div className="list-item-title">👤 {emp.name}</div>
-                  <div className="list-item-sub">{jobCount} job{jobCount !== 1 ? 's' : ''} completed · {Number(emp.commissionRate) > 0 ? `${emp.commissionRate}% commission` : 'no commission set'}</div>
+                  <div className="list-item-sub">{jobCount} job{jobCount !== 1 ? 's' : ''} completed · {reviewCount} review{reviewCount !== 1 ? 's' : ''} collected</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div className="calc-value green" style={{ fontSize: 17 }}>{fmt$(commission + tips)}</div>
+                  <div className="calc-value green" style={{ fontSize: 17 }}>{fmt$(commission + tips + bonuses)}</div>
                   <div className="margin-pct-label">total payout</div>
                 </div>
               </div>
-              <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+              <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
                 <div className="detail-grid-item"><div className="dg-label">Revenue</div><div className="dg-value">{fmt$(revenue)}</div></div>
-                <div className="detail-grid-item"><div className="dg-label">Commission</div><div className="dg-value" style={{ color: 'var(--travel)' }}>{fmt$(commission)}</div></div>
+                <div className="detail-grid-item"><div className="dg-label">Commission {Number(emp.commissionRate) > 0 ? `(${emp.commissionRate}%)` : ''}</div><div className="dg-value" style={{ color: 'var(--travel)' }}>{fmt$(commission)}</div></div>
                 <div className="detail-grid-item"><div className="dg-label">🎁 Tips</div><div className="dg-value" style={{ color: 'var(--profit)' }}>{fmt$(tips)}</div></div>
+                <div className="detail-grid-item"><div className="dg-label">⭐ Review Bonus</div><div className="dg-value" style={{ color: '#b45309' }}>{fmt$(bonuses)}</div></div>
               </div>
             </div>
           ))}
@@ -2707,6 +2743,7 @@ function App() {
   const [employees, setEmployees]   = useState(() => LS.get('cpw_employees', []));
   const [expenseCategories, setExpenseCategories] = useState(() => LS.get('cpw_expenseCategories', []));
   const [laborRate, setLaborRate]   = useState(() => LS.get('cpw_laborRate', 30));
+  const [reviewBonus, setReviewBonus] = useState(() => LS.get('cpw_reviewBonus', 20));
 
   // Auth + sync state
   const [user, setUser]           = useState(null);
@@ -2732,6 +2769,7 @@ function App() {
     employees: LS.get('cpw_employees', []),
     expenseCategories: LS.get('cpw_expenseCategories', []),
     laborRate: LS.get('cpw_laborRate', 30),
+    reviewBonus: LS.get('cpw_reviewBonus', 20),
   });
   // Keep one rolling snapshot per day (last 14 days) so data is always recoverable locally.
   // Never let a smaller (possibly clobbered) snapshot replace a bigger one from the same day.
@@ -2760,6 +2798,7 @@ function App() {
           employees: d.employees || [],
           expenseCategories: d.expenseCategories || [],
           laborRate: d.laborRate ?? 30,
+          reviewBonus: d.reviewBonus ?? 20,
         };
         const incomingJSON = JSON.stringify(incoming);
         // Skip if a local write is in progress or waiting to retry (would
@@ -2790,6 +2829,7 @@ function App() {
           setEmployees(incoming.employees);
           setExpenseCategories(incoming.expenseCategories);
           setLaborRate(incoming.laborRate);
+          setReviewBonus(incoming.reviewBonus);
         } else {
           // Cloud is older/smaller than our local — keep ours and push it back up.
           const json = JSON.stringify(local);
@@ -2858,8 +2898,9 @@ function App() {
     LS.set('cpw_employees', employees);
     LS.set('cpw_expenseCategories', expenseCategories);
     LS.set('cpw_laborRate', laborRate);
+    LS.set('cpw_reviewBonus', reviewBonus);
 
-    const data = { entries, jobs, expenses: expenseItems, bills, employees, expenseCategories, laborRate };
+    const data = { entries, jobs, expenses: expenseItems, bills, employees, expenseCategories, laborRate, reviewBonus };
     const json = JSON.stringify(data);
     if (json === lastCloudJSON.current) return; // nothing changed since last sync
 
@@ -2867,7 +2908,7 @@ function App() {
 
     if (!user || !cloudReady.current) return;
     doCloudSave(user.uid, json, Date.now());
-  }, [entries, jobs, expenseItems, bills, employees, expenseCategories, laborRate, user]);
+  }, [entries, jobs, expenseItems, bills, employees, expenseCategories, laborRate, reviewBonus, user]);
 
   const signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   const signOut = () => {
@@ -2887,6 +2928,7 @@ function App() {
     setEmployees(Array.isArray(d.employees) ? d.employees : []);
     setExpenseCategories(Array.isArray(d.expenseCategories) ? d.expenseCategories : []);
     setLaborRate(Number(d.laborRate) || 30);
+    setReviewBonus(d.reviewBonus == null ? 20 : Number(d.reviewBonus));
   };
 
   // Clear everything: local AND cloud, then reload fresh
@@ -2894,7 +2936,7 @@ function App() {
     if (!confirm('Delete ALL data on this device AND in the cloud? This cannot be undone.')) return;
     if (snapshotUnsub.current) { snapshotUnsub.current(); snapshotUnsub.current = null; }
     clearTimeout(retryTimer.current);
-    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_employees','cpw_expenseCategories','cpw_laborRate'].forEach(k => localStorage.removeItem(k));
+    ['cpw_entries','cpw_jobs','cpw_expenses','cpw_bills','cpw_employees','cpw_expenseCategories','cpw_laborRate','cpw_reviewBonus'].forEach(k => localStorage.removeItem(k));
     const done = () => window.location.reload();
     if (user) userDoc(user.uid).delete().then(done).catch(done);
     else done();
@@ -2956,12 +2998,12 @@ function App() {
 
       <div className="content">
         {tab === 'daily'    && <DailyTab    entries={entries} setEntries={setEntries} jobs={jobs} laborRate={laborRate} expenseItems={expenseItems} employees={employees} bills={bills} />}
-        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} expenseItems={expenseItems} />}
+        {tab === 'jobs'     && <JobsTab     jobs={jobs} setJobs={setJobs} entries={entries} setEntries={setEntries} laborRate={laborRate} employees={employees} expenseItems={expenseItems} reviewBonus={reviewBonus} />}
         {tab === 'expenses' && <ExpensesTab expenseItems={expenseItems} setExpenseItems={setExpenseItems} entries={entries} setEntries={setEntries} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} jobs={jobs} />}
-        {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} />}
+        {tab === 'employees'&& <EmployeesTab employees={employees} jobs={jobs} reviewBonus={reviewBonus} />}
         {tab === 'bills'    && <BillsTab    bills={bills} setBills={setBills} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} />}
-        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} employees={employees} />}
-        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} user={user} syncState={syncState} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
+        {tab === 'dash'     && <DashboardTab entries={entries} jobs={jobs} setJobs={setJobs} laborRate={laborRate} expenseItems={expenseItems} bills={bills} employees={employees} reviewBonus={reviewBonus} />}
+        {tab === 'settings' && <SettingsTab  laborRate={laborRate} setLaborRate={setLaborRate} entries={entries} setEntries={setEntries} jobs={jobs} setJobs={setJobs} expenseItems={expenseItems} bills={bills} employees={employees} setEmployees={setEmployees} expenseCategories={expenseCategories} setExpenseCategories={setExpenseCategories} reviewBonus={reviewBonus} setReviewBonus={setReviewBonus} user={user} syncState={syncState} signIn={signIn} signOut={signOut} onImport={importData} onClearAll={clearAllData} />}
       </div>
       <div className="bottom-nav">
         {tabs.map(t => (
