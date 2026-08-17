@@ -710,17 +710,22 @@ function tipForEmployeeOnJob(job, empId) {
   if (!ids.includes(empId) || ids.length === 0) return 0;
   return (Number(job.tip) || 0) / ids.length;
 }
-// Bonus paid when the tech collects a Google review on a job (only if a tech is assigned).
+// Which tech(s) are credited with collecting the review — explicit, separate from
+// who worked the job (`employeeIds`). Only these techs get the bonus.
+function jobReviewCollectors(job) {
+  return Array.isArray(job.reviewCollectedBy) ? job.reviewCollectedBy.filter(Boolean) : [];
+}
+// Bonus paid when a review is collected — only to whichever tech(s) are marked as having collected it.
 function reviewBonusForJob(job, reviewBonus) {
   if (!job.googleReview) return 0;
-  if (jobEmployeeIds(job).length === 0) return 0;
+  if (jobReviewCollectors(job).length === 0) return 0;
   return Number(reviewBonus) || 0;
 }
-// One tech's share of that review bonus (split if multiple techs worked the job).
+// One tech's share of that review bonus (split if more than one tech is credited).
 function reviewBonusForEmployeeOnJob(job, empId, reviewBonus) {
-  const ids = jobEmployeeIds(job);
-  if (!ids.includes(empId) || ids.length === 0) return 0;
-  return reviewBonusForJob(job, reviewBonus) / ids.length;
+  const collectors = jobReviewCollectors(job);
+  if (!collectors.includes(empId)) return 0;
+  return reviewBonusForJob(job, reviewBonus) / collectors.length;
 }
 
 // Expense-log items assigned to a job from the Expenses tab (via jobId)
@@ -1022,7 +1027,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [], tip: '' };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [], tip: '', reviewCollectedBy: [] };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems, reviewBonus }) {
   const [showForm, setShowForm]   = useState(false);
@@ -1209,6 +1214,32 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                 {form.paid ? '💰 Paid' : '⏳ Unpaid'}
               </button>
             </div>
+            {form.googleReview && (employees || []).length > 0 && (
+              <div className="form-group span2">
+                <label>Who Collected the Review? <span style={{ fontWeight: 400, color: '#a0aec0', marginLeft: 4 }}>(gets the ${reviewBonus} bonus)</span></label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(employees || []).map(emp => {
+                    const on = (form.reviewCollectedBy || []).includes(emp.id);
+                    return (
+                      <button key={emp.id} type="button"
+                        onClick={() => setForm(f => {
+                          const ids = f.reviewCollectedBy || [];
+                          return { ...f, reviewCollectedBy: on ? ids.filter(id => id !== emp.id) : [...ids, emp.id] };
+                        })}
+                        style={{ background: on ? '#f59e0b' : 'var(--border)', color: on ? '#fff' : 'var(--navy2)', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                        {on ? '⭐ ' : ''}{emp.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(form.reviewCollectedBy || []).length === 0 && (
+                  <span style={{ fontSize: 11, color: '#b45309', marginTop: 4, fontWeight: 600 }}>Tap the tech who got the review, or nobody gets the bonus.</span>
+                )}
+                {(form.reviewCollectedBy || []).length > 1 && (
+                  <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 4, fontWeight: 600 }}>Bonus splits equally across {(form.reviewCollectedBy || []).length} techs.</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Job Expenses */}
@@ -1315,7 +1346,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                         ? <span className="badge badge-green">💰 Paid</span>
                         : <span className="badge badge-yellow">⏳ Unpaid</span>}
                       {job.googleReview
-                        ? <span className="badge badge-green">⭐ Reviewed</span>
+                        ? <span className="badge badge-green">⭐ Reviewed{(() => { const names = jobReviewCollectors(job).map(id => ((employees||[]).find(e=>e.id===id)||{}).name).filter(Boolean); return names.length ? ' by ' + names.join(', ') : ''; })()}</span>
                         : <span className="badge badge-orange">No Review</span>}
                       {Number(job.tip) > 0 && <span className="badge badge-green">🎁 {fmt$(job.tip)} tip</span>}
                     </div>
@@ -1954,10 +1985,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const exportJobsCSV = () => {
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Review Bonus','Tip','Profit','Margin %','Status','Paid','Google Review','Employees']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Review Bonus','Tip','Profit','Margin %','Status','Paid','Google Review','Review Collected By','Employees']];
     jobs.forEach(j => {
       const c = calcJob(j, laborRate, employees, expenseItems, reviewBonus);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.bonus.toFixed(2), (Number(j.tip)||0).toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.bonus.toFixed(2), (Number(j.tip)||0).toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobReviewCollectors(j).map(empName).filter(Boolean).join('; '), jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2614,7 +2645,7 @@ function EmployeesTab({ employees, jobs, reviewBonus }) {
     const commission = empJobs.reduce((s, j) => s + commissionForEmployeeOnJob(j, emp.id, employees), 0);
     const tips = empJobs.reduce((s, j) => s + tipForEmployeeOnJob(j, emp.id), 0);
     const bonuses = empJobs.reduce((s, j) => s + reviewBonusForEmployeeOnJob(j, emp.id, reviewBonus), 0);
-    const reviewCount = empJobs.filter(j => j.googleReview).length;
+    const reviewCount = inPeriod.filter(j => jobReviewCollectors(j).includes(emp.id)).length;
     return { emp, jobCount: empJobs.length, revenue, commission, tips, bonuses, reviewCount };
   }).sort((a, b) => (b.commission + b.tips + b.bonuses) - (a.commission + a.tips + a.bonuses));
 
@@ -2626,8 +2657,8 @@ function EmployeesTab({ employees, jobs, reviewBonus }) {
   const totalComm = rows.reduce((s, r) => s + r.commission, 0);
   const totalTips = rows.reduce((s, r) => s + r.tips, 0);
   const totalBonuses = rows.reduce((s, r) => s + r.bonuses, 0);
-  // Count each reviewed job once (a job shared by 2 techs is still one review)
-  const totalReviews = inPeriod.filter(j => j.googleReview && jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id))).length;
+  // Count each job with a credited review collector once (shared credit is still one review)
+  const totalReviews = inPeriod.filter(j => jobReviewCollectors(j).length > 0).length;
   // Tips on completed jobs with nobody assigned — flagged so they don't get lost
   const unassignedTips = inPeriod
     .filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)))
