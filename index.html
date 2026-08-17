@@ -704,6 +704,12 @@ function commissionForJob(job, employees) {
   const ids = jobEmployeeIds(job);
   return ids.reduce((s, id) => s + commissionForEmployeeOnJob(job, id, employees), 0);
 }
+// A customer tip on a job is split equally among the techs who worked it (pass-through, not business income).
+function tipForEmployeeOnJob(job, empId) {
+  const ids = jobEmployeeIds(job);
+  if (!ids.includes(empId) || ids.length === 0) return 0;
+  return (Number(job.tip) || 0) / ids.length;
+}
 
 // Expense-log items assigned to a job from the Expenses tab (via jobId)
 function assignedExpensesForJob(job, expenseItems) {
@@ -1003,7 +1009,7 @@ function DailyTab({ entries, setEntries, jobs, laborRate, expenseItems, employee
 }
 
 // ─── Jobs Tab ──────────────────────────────────────────────────
-const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [] };
+const EMPTY_JOB = { client: '', description: '', dateStart: today(), dateEnd: '', revenue: '', manHours: '', status: 'In Progress', expenses: [], googleReview: false, paid: false, employeeIds: [], tip: '' };
 
 function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, expenseItems }) {
   const [showForm, setShowForm]   = useState(false);
@@ -1138,9 +1144,24 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                     })}
                   </div>
                   {(form.employeeIds || []).length > 1 && (
-                    <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 4, fontWeight: 600 }}>Commission splits equally across {(form.employeeIds || []).length} techs.</span>
+                    <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 4, fontWeight: 600 }}>Commission and tips split equally across {(form.employeeIds || []).length} techs.</span>
                   )}
                 </>
+              )}
+            </div>
+            <div className="form-group span2">
+              <label>Customer Tip <span style={{ fontWeight: 400, color: '#a0aec0', marginLeft: 4 }}>(goes to the tech, not the business)</span></label>
+              <div className="input-prefix">
+                <span>$</span>
+                <input type="number" inputMode="decimal" name="tip" value={form.tip || ''} onChange={handleChange} placeholder="0.00" step="0.01" min="0" />
+              </div>
+              {Number(form.tip) > 0 && (form.employeeIds || []).length === 0 && (
+                <span style={{ fontSize: 11, color: '#b45309', marginTop: 2, fontWeight: 600 }}>Assign a tech above so this tip gets credited to someone.</span>
+              )}
+              {Number(form.tip) > 0 && (form.employeeIds || []).length > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--navy3)', marginTop: 2, fontWeight: 600 }}>
+                  {fmt$(Number(form.tip) / form.employeeIds.length)} each to {form.employeeIds.map(id => ((employees||[]).find(e=>e.id===id)||{}).name).filter(Boolean).join(', ')}
+                </span>
               )}
             </div>
             <div className="form-group" style={{ justifyContent: 'flex-end' }}>
@@ -1282,6 +1303,7 @@ function JobsTab({ jobs, setJobs, entries, setEntries, laborRate, employees, exp
                       {job.googleReview
                         ? <span className="badge badge-green">⭐ Reviewed</span>
                         : <span className="badge badge-orange">No Review</span>}
+                      {Number(job.tip) > 0 && <span className="badge badge-green">🎁 {fmt$(job.tip)} tip</span>}
                     </div>
                   </div>
                   <div>
@@ -1918,10 +1940,10 @@ function SettingsTab({ laborRate, setLaborRate, entries, setEntries, jobs, setJo
 
   const exportJobsCSV = () => {
     const empName = id => (employees || []).find(e => e.id === id)?.name || '';
-    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Profit','Margin %','Status','Paid','Google Review','Employees']];
+    const rows = [['Client','Description','Start Date','End Date','Revenue','Man Hours','Labor Cost','Job Expenses','Commission','Tip','Profit','Margin %','Status','Paid','Google Review','Employees']];
     jobs.forEach(j => {
       const c = calcJob(j, laborRate, employees, expenseItems);
-      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
+      rows.push([j.client, j.description, j.dateStart, j.dateEnd||'', j.revenue, j.manHours, c.labor.toFixed(2), c.jobExps.toFixed(2), c.commission.toFixed(2), (Number(j.tip)||0).toFixed(2), c.profit.toFixed(2), c.margin.toFixed(1), j.status, j.paid ? 'Yes' : 'No', j.googleReview ? 'Yes' : 'No', jobEmployeeIds(j).map(empName).filter(Boolean).join('; ')]);
     });
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -2562,11 +2584,12 @@ function EmployeesTab({ employees, jobs }) {
 
   const rows = (employees || []).map(emp => {
     const empJobs = inPeriod.filter(j => jobEmployeeIds(j).includes(emp.id));
-    // Revenue of jobs they worked on (full job value); commission is their split share
+    // Revenue of jobs they worked on (full job value); commission/tips are their split share
     const revenue = empJobs.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
     const commission = empJobs.reduce((s, j) => s + commissionForEmployeeOnJob(j, emp.id, employees), 0);
-    return { emp, jobCount: empJobs.length, revenue, commission };
-  }).sort((a, b) => b.commission - a.commission);
+    const tips = empJobs.reduce((s, j) => s + tipForEmployeeOnJob(j, emp.id), 0);
+    return { emp, jobCount: empJobs.length, revenue, commission, tips };
+  }).sort((a, b) => (b.commission + b.tips) - (a.commission + a.tips));
 
   const unassigned = inPeriod.filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)));
   const unassignedRev = unassigned.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
@@ -2574,6 +2597,11 @@ function EmployeesTab({ employees, jobs }) {
   // Totals count each completed job once (a job shared by 2 techs isn't double-counted)
   const totalRev = inPeriod.reduce((s, j) => s + (Number(j.revenue) || 0), 0);
   const totalComm = rows.reduce((s, r) => s + r.commission, 0);
+  const totalTips = rows.reduce((s, r) => s + r.tips, 0);
+  // Tips on completed jobs with nobody assigned — flagged so they don't get lost
+  const unassignedTips = inPeriod
+    .filter(j => !jobEmployeeIds(j).some(id => (employees || []).some(e => e.id === id)))
+    .reduce((s, j) => s + (Number(j.tip) || 0), 0);
 
   const unitName = period === 'today' ? 'day' : period === 'week' ? 'week' : 'month';
 
@@ -2611,9 +2639,25 @@ function EmployeesTab({ employees, jobs }) {
               <div className="stat-value orange">{fmt$(totalComm)}</div>
               <div className="stat-sub">{label}</div>
             </div>
+            <div className="stat-card">
+              <div className="stat-label">Tips Collected</div>
+              <div className="stat-value green">{fmt$(totalTips)}</div>
+              <div className="stat-sub">{label}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Total Payout</div>
+              <div className="stat-value" style={{ color: '#fcd34d' }}>{fmt$(totalComm + totalTips)}</div>
+              <div className="stat-sub">commission + tips</div>
+            </div>
           </div>
 
-          {rows.map(({ emp, jobCount, revenue, commission }) => (
+          {unassignedTips > 0 && (
+            <div className="info-note" style={{ color: '#b45309', borderColor: '#fcd34d', background: '#fef9c3', marginBottom: 12 }}>
+              ⚠ {fmt$(unassignedTips)} in tips is on completed jobs with no tech assigned. Assign a tech on those jobs so the tip gets credited.
+            </div>
+          )}
+
+          {rows.map(({ emp, jobCount, revenue, commission, tips }) => (
             <div key={emp.id} className="card">
               <div className="list-item-header">
                 <div>
@@ -2621,13 +2665,14 @@ function EmployeesTab({ employees, jobs }) {
                   <div className="list-item-sub">{jobCount} job{jobCount !== 1 ? 's' : ''} completed · {Number(emp.commissionRate) > 0 ? `${emp.commissionRate}% commission` : 'no commission set'}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div className="calc-value blue" style={{ fontSize: 17 }}>{fmt$(revenue)}</div>
-                  <div className="margin-pct-label">revenue</div>
+                  <div className="calc-value green" style={{ fontSize: 17 }}>{fmt$(commission + tips)}</div>
+                  <div className="margin-pct-label">total payout</div>
                 </div>
               </div>
-              <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                <div className="detail-grid-item"><div className="dg-label">Revenue Generated</div><div className="dg-value">{fmt$(revenue)}</div></div>
-                <div className="detail-grid-item"><div className="dg-label">Commission Owed</div><div className="dg-value" style={{ color: 'var(--travel)' }}>{fmt$(commission)}</div></div>
+              <div className="detail-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                <div className="detail-grid-item"><div className="dg-label">Revenue</div><div className="dg-value">{fmt$(revenue)}</div></div>
+                <div className="detail-grid-item"><div className="dg-label">Commission</div><div className="dg-value" style={{ color: 'var(--travel)' }}>{fmt$(commission)}</div></div>
+                <div className="detail-grid-item"><div className="dg-label">🎁 Tips</div><div className="dg-value" style={{ color: 'var(--profit)' }}>{fmt$(tips)}</div></div>
               </div>
             </div>
           ))}
