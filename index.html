@@ -2904,9 +2904,12 @@ function App() {
           feeRate: d.feeRate ?? 3,
         };
         const incomingJSON = JSON.stringify(incoming);
-        // Skip if a local write is in progress or waiting to retry (would
-        // overwrite unsaved changes), or if this is our own write echoing back.
-        if (isSaving.current || retryPending.current) return;
+        // Skip only if this is our own write echoing back unchanged. (We used to also
+        // bail out here whenever a local save was in-flight or retrying — but that let
+        // a device with ANY stuck/failing save go permanently deaf to updates from other
+        // devices, since it would never re-check once the retry eventually succeeded on
+        // its own. The timestamp-based adopt logic below is what actually protects
+        // against clobbering, so it alone decides whether to accept incoming data.)
         if (incomingJSON === lastCloudJSON.current) return;
 
         // ── Anti-clobber guard ──
@@ -2934,8 +2937,10 @@ function App() {
           setLaborRate(incoming.laborRate);
           setReviewBonus(incoming.reviewBonus);
           setFeeRate(incoming.feeRate);
-        } else {
+        } else if (!isSaving.current) {
           // Cloud is older/smaller than our local — keep ours and push it back up.
+          // (Skip if a save is already in flight so we don't fire overlapping writes;
+          // that in-flight save already carries our current, newer version.)
           const json = JSON.stringify(local);
           const ts = Math.max(localTs, cloudTs) + 1;
           doCloudSave(uid, json, ts);
